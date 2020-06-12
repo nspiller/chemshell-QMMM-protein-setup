@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 import re
 
-#################
-## Atom labels ##
-#################
+################
+## User Input ##
+################
 
 idx2name = { # this dict converts orca atom indices to sensible names (required)
     15: 'Mo',
@@ -18,6 +18,11 @@ idx2name = { # this dict converts orca atom indices to sensible names (required)
     21: 'Fe6',
     22: 'Fe7',
 }
+
+
+# orbital analysis
+minsum = 0.6 # consider only orbitals with at leats this much on above atoms
+thresh = 0.02 # remove single contributions below this value
 
 ###############
 ## HIRSHFELD ##
@@ -394,16 +399,18 @@ def change_columns(df, d, l):
 
     return df
 
-def nicefy_orbcomp(df, minsum, maxsum, thresh):
+def nicefy_orbcomp(df, minsum, thresh):
         
     df = change_columns(df, idx2name, idx2name.values())
     
     # delete uninteresting orbitals from dataframe
     df.loc[:, 'sum'] = df.loc[:, : ].sum(axis=1) # create sum column
     df = df.loc[ df['sum'] > minsum, : ]
-    df = df.loc[ df['sum'] < maxsum, : ]
 
     df = df.apply( lambda x: [y if y > thresh else np.nan for y in x])
+    
+    df.sort_values([ i for i in idx2name.values()], inplace=True, ascending=False) # sort
+
 
     return df
 
@@ -473,14 +480,13 @@ if __name__ == '__main__':
 
             # orbital analysis
             if orbcomp:
-                minsum, maxsum, thresh = 0.6, 0.99, 0.02
                 arange, brange = get_occ_orbitals(hirsh_out)
                 
                 df_orbcompa = get_orbcomp(orbcomp_out, arange)
                 df_orbcompb = get_orbcomp(orbcomp_out, brange)
                 
-                df_orbcompa = nicefy_orbcomp(df_orbcompa, minsum, maxsum, thresh)
-                df_orbcompb = nicefy_orbcomp(df_orbcompb, minsum, maxsum, thresh)
+                df_orbcompa = nicefy_orbcomp(df_orbcompa, minsum, thresh)
+                df_orbcompb = nicefy_orbcomp(df_orbcompb, minsum, thresh)
 
                 df_orbcompa.to_excel(writer, sheet_name='Hirshfeld alpha orb comp')
                 df_orbcompb.to_excel(writer, sheet_name='Hirshfeld beta orb comp')
