@@ -6,6 +6,7 @@ n  # If outputting atom coordinates with charges to co.molden.chg in current fol
 8  # Orbital composition analysis
 8  # Calculate atom and fragment contributions by Hirshfeld method 
 1  # Use build-in sphericalized atomic densities in free-states (recommended)
+-1 # Print basic information of all orbitals
 -4 # Export composition of every atom in every orbital to orbcomp.txt
 0  # return
 -10 # return main menu

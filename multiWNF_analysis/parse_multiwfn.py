@@ -30,10 +30,10 @@ thresh = 0.02 # remove single contributions below this value
 def get_fuzzy(output):
     '''
     ATTENTION: very unspecific parsing 
-    return np.array of values of interation of some function in fuzzy volumes 
+    return df of values of interation of some function in fuzzy volumes 
     (e.g. spin)
 
-    ATTENTION: atom indices in MultiWFN start with 1. irrelevant here since np.array is returned
+    ATTENTION: atom indices in MultiWFN start with 1. 
 
     matches first occurence of 
 
@@ -357,15 +357,32 @@ def get_occ_orbitals(multiout):
     return two tuples: (alpha_i, alpha_f), (beta_i, beta_f)
     '''
 
+    alpha, beta = np.array([], dtype=int), np.array([], dtype=int)
+
     with open(multiout) as f:
         for line in f:
-            if 'Orbitals from' in line and 'are alpha' in line and 'are occupied' in line:
-                l = line.split()
-                ai, af = int(l[-5]) - 1, int(l[-3]) - 1 # counting from 0
-            elif 'Orbitals from' in line and 'are beta' in line and 'are occupied' in line:
-                l = line.split()
-                bi, bf = int(l[-5]) - 1, int(l[-3]) - 1 # counting from 0
-                break
+            l = line.split()
+            if len(l) == 8: 
+                if l[0] == 'Orbital:' and l[-2] == 'Type:':
+
+                    print(line)
+                    n = int(l[1])
+                    s = l[-1]
+                    o = float(l[-3])
+
+                    if o == 1.0:
+                        if s == 'Alpha':
+                            alpha = np.append(alpha, [n])
+                        elif s == 'Beta':
+                            beta = np.append(beta, [n])
+                        else:
+                            raise Exception('Parsing error in line: {}'.format(line))
+
+
+    alpha_range = ( alpha.min(), alpha.max() )              
+    beta_range = ( beta.min(), beta.max() )
+
+    return alpha_range, beta_range
 
     return (ai, af), (bi, bf)
 
@@ -466,18 +483,18 @@ if __name__ == '__main__':
     with pd.ExcelWriter(xlsx_out, engine='xlsxwriter') as writer: # necessary to write to one xlsx document
         # Hirshfeld
         if hirsh:
-            # charge
-            df_charge = get_hirsh_cm5(hirsh_out.name)
-
-            #spin
-            df_spin = get_fuzzy(hirsh_out.name)
-
-            pd.concat([df_charge, df_spin]).to_excel(writer, sheet_name='Hirshfeld charge, spin')
-
-            # LIDI
-            if lidi:
-                df_lidi_deloca, df_lidi_delocb, df_lidi_delocab, df_lidi_loca, df_lidi_locb, df_lidi_locab = get_lidi(lidi_out) 
-
+#            # charge
+#            df_charge = get_hirsh_cm5(hirsh_out.name)
+#
+#            #spin
+#            df_spin = get_fuzzy(hirsh_out.name)
+#
+#            pd.concat([df_charge, df_spin]).to_excel(writer, sheet_name='Hirshfeld charge, spin')
+#
+#            # LIDI
+#            if lidi:
+#                df_lidi_deloca, df_lidi_delocb, df_lidi_delocab, df_lidi_loca, df_lidi_locb, df_lidi_locab = get_lidi(lidi_out) 
+#
             # orbital analysis
             if orbcomp:
                 arange, brange = get_occ_orbitals(hirsh_out)
