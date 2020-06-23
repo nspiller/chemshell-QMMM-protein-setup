@@ -349,42 +349,45 @@ def get_basin_spin(output):
 ## General processing ##
 ########################
 
-def get_occ_orbitals(multiout):
+def get_occ_orbitals(multiout, spin=0, minerg=-1):
     '''
-    parse multiwfn output to get orbital range for occupied alpha and beta orbitals
+    parse multiwfn output to get information on occupied alpha and beta orbitals
     counting starts at 0
 
-    return two tuples: (alpha_i, alpha_f), (beta_i, beta_f)
+    requires
+    mulitout    output file of multiwfn with "Pirint basic information of all orbitals" called
+    optiona
+    spin        0 (alpha, default), 1 (beta), 2 (doubly occupied)
+    minerg      minimum energy of orbital in Ha (default: -1 Ha)
+
+    returns df
     '''
 
-    alpha, beta = np.array([], dtype=int), np.array([], dtype=int)
+    df = pd.DataFrame()
+
+    spindict = {
+        'Alpha':        0,
+        'Beta':         1,
+        'Alpha&Beta':   2,}
 
     with open(multiout) as f:
         for line in f:
             l = line.split()
             if len(l) == 8: 
                 if l[0] == 'Orbital:' and l[-2] == 'Type:':
-
-                    print(line)
-                    n = int(l[1])
+                    n = int(l[1]) - 1 # adjust to counting from 0
+                    e = float(l[3])
                     s = l[-1]
                     o = float(l[-3])
 
-                    if o == 1.0:
-                        if s == 'Alpha':
-                            alpha = np.append(alpha, [n])
-                        elif s == 'Beta':
-                            beta = np.append(beta, [n])
-                        else:
-                            raise Exception('Parsing error in line: {}'.format(line))
+                    if o != 0.0:
+                        df.loc[n,'spin'] = spindict[s]
+                        df.loc[n, 'occ'] = o
+                        df.loc[n, 'erg'] = e
 
+    df = df.loc[ ( df.loc[:,'spin'] == spin ) & ( df.loc[:,'erg'] > -1 ) ]
 
-    alpha_range = ( alpha.min(), alpha.max() )              
-    beta_range = ( beta.min(), beta.max() )
-
-    return alpha_range, beta_range
-
-    return (ai, af), (bi, bf)
+    return df
 
 def change_rows(df, d, l):
     '''
@@ -417,7 +420,12 @@ def change_columns(df, d, l):
     return df
 
 def nicefy_orbcomp(df, minsum, thresh):
-        
+    '''
+    *) rename columns 
+    *) remove all values below thresh
+    *) remove all rows with less than minsum as sum
+    '''
+
     df = change_columns(df, idx2name, idx2name.values())
     
     # delete uninteresting orbitals from dataframe
@@ -497,11 +505,19 @@ if __name__ == '__main__':
 #
             # orbital analysis
             if orbcomp:
-                arange, brange = get_occ_orbitals(hirsh_out)
                 
+                # determine orbital ranges
+                alpha = get_occ_orbitals(hirsh_out, spin=0, minerg=-1)
+                beta  = get_occ_orbitals(hirsh_out, spin=1, minerg=-1)
+                arange = ( alpha.index.min(), alpha.index.max() )
+                brange = ( beta.index.min(), beta.index.max() )
+                print(arange, brange)
+                
+                # parse orbcomp.txt
                 df_orbcompa = get_orbcomp(orbcomp_out, arange)
                 df_orbcompb = get_orbcomp(orbcomp_out, brange)
                 
+                # remove va
                 df_orbcompa = nicefy_orbcomp(df_orbcompa, minsum, thresh)
                 df_orbcompb = nicefy_orbcomp(df_orbcompb, minsum, thresh)
 
