@@ -5,44 +5,45 @@ import pandas as pd
 import argparse
 import re
 
-def get_df_orb(output):
-    ' From an output file return orbital block as pandas dataframe '
+def get_orbitals(output):
+    'From an output file return last orbital block as pandas dataframe'
 
-    df = pd.DataFrame(columns=['n', 'occ', 'e_ha', 'e_ev', 'spin'])
-    parse, alpha = False, False
-
+    parse, alpha = False, False # initial switches
 
     with open(output) as f:
         for line in f:
+
             l = line.split()
-            if 'SPIN UP ORBITALS' in line:
-                parse, alpha = True, True
+            if 'SPIN UP ORBITALS' in line: # (re)initial dataframe here 
+                df = pd.DataFrame(columns=['n', 'occ', 'e_ha', 'e_ev', 'spin'])
+                parse, alpha = True, True # parse alpha orbitals
                 continue
             elif 'SPIN DOWN ORBITALS' in line:
-                parse, alpha = True, False
+                parse, alpha = True, False #swtich to beta orbitals
                 continue
-            elif len(l) == 0:
+            elif len(l) == 0: # termitate parsing on emtpy line
                 parse = False
                 continue
-            elif l[0] == 'NO':
+            elif l[0] == 'NO': # skip header line
                 continue
 
             if parse:
-                n = int(l[0])
-                occ = float(l[1])
-                ha = float(l[2])
-                ev = float(l[3])
-                s = 0 if alpha else 1
+                n = int(l[0])         # orbital numer
+                occ = float(l[1])     # occupation
+                ha = float(l[2])      # energy Ha
+                ev = float(l[3])      # energy eV
+                s = 0 if alpha else 1 # spin
                 
-                row = len(df)
-                df.loc[row,:] = [ n, occ, ha, ev, s ]
+                row = len(df.index)   # determine row number
+                df.loc[row,:] = [ n, occ, ha, ev, s ] 
 
 
     return df
 
-def write_orca_loc(orb_i, orb_f, spin, fname, gbwin, gbwout):
+def write_input_file(orb_i, orb_f, spin, fname, gbwin, gbwout):
     ' write orca_loc input file with initial, final orbital and spin'
 
+    # template with placeholders
     template = '''\
 {gbwin:10}  # input gbw
 {gbwout:10}  # output gbw
@@ -59,6 +60,7 @@ def write_orca_loc(orb_i, orb_f, spin, fname, gbwin, gbwout):
 1           # use Cholesky Decomposition (0=false, 1=true, default is true,optional)
 0           # Randomize seed for localization(optional)'''
 
+    # dict to fill template
     context = {
         'gbwin' : str(gbwin),
         'gbwout': str(gbwout),
@@ -66,30 +68,49 @@ def write_orca_loc(orb_i, orb_f, spin, fname, gbwin, gbwout):
         'orb_f' : str(orb_f),
         'spin'  : str(spin), }
 
+    # write file
     with open(fname, 'w') as f:
         f.write(template.format(**context))
 
+def get_orbital_range(df, spin, minerg):
+    '''from dataframe return minimal and maximal orbital index as tuple of ints
+
+    df       dataframe created by get_orbitals()
+    minerg   minimal orbital energy in Ha, default: 1
+    spin     alpha: 0, beta: 1'''
+    
+    df = df.loc[ ( df.loc[:,'occ'] != 0 ) & ( df.loc[:,'spin'] == spin ) & (df.loc[:,'e_ha'] > minerg)]
+    
+    nmin = df.loc[ df.loc[:,'e_ha'].astype(float).idxmin(), 'n' ]
+    nmax = df.loc[ df.loc[:,'e_ha'].astype(float).idxmax(), 'n' ]
+
+    return (nmin, nmax)
+
+
 def run():
 
+    # setup command line behavior
     parser = argparse.ArgumentParser(description='determine orbital ranges from orca output and write orca_loc input files')
     parser.add_argument('output', help='give output file of orca calulationn')
     args = parser.parse_args()
+
+    # files
     orcaout = args.output
     gbw = re.sub(r'(mpi\d*\.)?out$', 'gbw', orcaout)
+    alphainput = 'orca_loc_a.input'
+    betainput  = 'orca_loc_b.input'
+    alphagbw = 'loc_a.gbw'
+    alphabetagbw = 'loc.gbw'
     
-    df = get_df_orb(orcaout)
+    df = get_orbitals(orcaout)
 
-    # only occupied with energy > -1 Ha
-    df_a = df.loc[ ( df.loc[:,'occ'] != 0 ) & ( df.loc[:,'spin'] == 0 ) & (df.loc[:,'e_ha'] > -1)]
-    df_b = df.loc[ ( df.loc[:,'occ'] != 0 ) & ( df.loc[:,'spin'] == 1 ) & (df.loc[:,'e_ha'] > -1)] 
+    # occupied with energy > -1 Ha
+    a_min, a_max = get_orbital_range(df, spin=0, minerg=-1)
+    b_min, b_max = get_orbital_range(df, spin=1, minerg=-1)
     
-    a_min = df.loc[ df_a.loc[:,'e_ha'].astype(float).idxmin(), 'n' ]
-    a_max = df.loc[ df_a.loc[:,'e_ha'].astype(float).idxmax(), 'n' ]
-    b_min = df.loc[ df_b.loc[:,'e_ha'].astype(float).idxmin(), 'n' ]
-    b_max = df.loc[ df_b.loc[:,'e_ha'].astype(float).idxmax(), 'n' ]
-    
-    write_orca_loc(a_min, a_max, 0, 'orca_loc_a.input', gbw, 'loc_a.gbw')
-    write_orca_loc(b_min, b_max, 1, 'orca_loc_b.input', 'loc_a.gbw', 'loc.gbw')
+    # write files
+    write_input_file(a_min, a_max, 0, alphainput, gbw, alphagbw)
+    write_input_file(b_min, b_max, 1, betainput, alphagbw, alphabetagbw)
 
 if __name__ == '__main__':
     run()
