@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
 import pandas as pd
-
 import argparse
 import re
 
 def get_orbitals(output):
-    'From an output file return last orbital block as pandas dataframe'
+    '''return orbital information as pandas dataframe
+
+    takes one argument: orca output file
+    returns pandas dataframe of the last occuring ORBITAL ENERGY section'''
 
     parse, alpha = False, False # initial switches
 
     with open(output) as f:
         for line in f:
-
             l = line.split()
+
             if 'SPIN UP ORBITALS' in line: # (re)initial dataframe here 
                 df = pd.DataFrame(columns=['n', 'occ', 'e_ha', 'e_ev', 'spin'])
                 parse, alpha = True, True # parse alpha orbitals
@@ -58,7 +60,8 @@ def write_input_file(orb_i, orb_f, spin, fname, gbwin, gbwout):
 100         # printing thresh to call an orbital bond-like: all should be printed as deloc
 2           # print level
 1           # use Cholesky Decomposition (0=false, 1=true, default is true,optional)
-0           # Randomize seed for localization(optional)'''
+0           # Randomize seed for localization(optional)
+'''
 
     # dict to fill template
     context = {
@@ -72,17 +75,23 @@ def write_input_file(orb_i, orb_f, spin, fname, gbwin, gbwout):
     with open(fname, 'w') as f:
         f.write(template.format(**context))
 
-def get_orbital_range(df, spin, minerg):
-    '''from dataframe return minimal and maximal orbital index as tuple of ints
 
+def get_orbital_range(df, spin, minerg):
+    '''return minimal and maximal orbital index 
+
+    returns tuple with the number of the highest occupied orbital and lowest with energy of at least minerg
+
+    requires
     df       dataframe created by get_orbitals()
-    minerg   minimal orbital energy in Ha, default: 1
-    spin     alpha: 0, beta: 1'''
+    spin     alpha: 0, beta: 1
+    minerg   minimal orbital energy in Ha, default: 1'''
     
+    # select only occupied & of certain spin & with at least minerg in ha
     df = df.loc[ ( df.loc[:,'occ'] != 0 ) & ( df.loc[:,'spin'] == spin ) & (df.loc[:,'e_ha'] > minerg)]
     
-    nmin = df.loc[ df.loc[:,'e_ha'].astype(float).idxmin(), 'n' ]
-    nmax = df.loc[ df.loc[:,'e_ha'].astype(float).idxmax(), 'n' ]
+    # get min and max orbital index
+    nmin = df.loc[:,'n'].min()
+    nmax = df.loc[:,'n'].max()
 
     return (nmin, nmax)
 
@@ -95,16 +104,15 @@ def run():
     args = parser.parse_args()
 
     # files
-    orcaout = args.output
-    gbw = re.sub(r'(mpi\d*\.)?out$', 'gbw', orcaout)
-    alphainput = 'orca_loc_a.input'
-    betainput  = 'orca_loc_b.input'
-    alphagbw = 'loc_a.gbw'
+    orcaout      = args.output
+    gbw          = re.sub(r'(mpi\d*\.)?out$', 'gbw', orcaout)
+    alphainput   = 'orca_loc_a.input'
+    betainput    = 'orca_loc_b.input'
+    alphagbw     = 'loc_a.gbw'
     alphabetagbw = 'loc.gbw'
     
+    # get orbital raneg of occupied orbitals with energy > -1 Ha
     df = get_orbitals(orcaout)
-
-    # occupied with energy > -1 Ha
     a_min, a_max = get_orbital_range(df, spin=0, minerg=-1)
     b_min, b_max = get_orbital_range(df, spin=1, minerg=-1)
     
