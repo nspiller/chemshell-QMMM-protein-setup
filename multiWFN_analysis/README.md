@@ -2,7 +2,7 @@
 This workflow describes the analysis of QM part of a QMMM calculation.
 It focuses on the metals in the QM part.
 The partitioning of the physical space can be done either within the Hirshfeld method (TODO: citation) 
-or the Bader QTAIM (TODO: citation).
+or the Bader QTAIM (not yet implemented, TODO: citation).
 Within the chosen partitioning the following is analyzed:
 
 - spin population
@@ -26,10 +26,8 @@ Optional are:
 	- `orca_loc orca_loc_alpha.inp` 
 	- `orca_loc orca_loc_beta.inp`
 	- `orca_2mkl loc -molden` 
-	- either or
-		- `Multiwfn $BASENAME.molden.input < multi_bader.inp | tee multi_bader.out`  
-		- `Multiwfn $BASENAME.molden.input < multi_hirsh.inp | tee multi_hirsh.out`
-	- `parse_multiwfn.py`
+	- `Multiwfn $BASENAME.molden.input < multi_hirsh.inp | tee multi_hirsh.out`
+	- `parse_multiwfn.py multi_hirsh.out`
 	
 
 # step 1: convert GBW to molden file
@@ -53,9 +51,9 @@ Decide on either the Hirshfeld method or the Bader method to partitioning the ph
 1. Hirshfeld is cheaper (56 atoms: 5 min on 4 cores), because it uses predefined densities of the neutral atoms for counting what belongs to an atom. 
 This can lead to trouble for atoms in different and/or anisotropic environments. Because the method uses
 atomic densities, each point in space belongs with a certain weight to every atom, Hirshfeld is a fuzzy partitioning.
-2. Bader defines the volume around an atom based on the surface of minimal electron density between two atoms.
+2. (TODO: Bader defines the volume around an atom based on the surface of minimal electron density between two atoms.
 This step takes significantly longer (56 atoms: 12 h on 4 cores). It accounts for different chemical environments, because the volumes can take any possible shape.
-Each point in space belongs to exactly one atom, Bader leads to a discrete partitioning.
+Each point in space belongs to exactly one atom, Bader leads to a discrete partitioning.)
 
 The following files will be generated:
 - `multi_*.out` contains
@@ -72,8 +70,8 @@ The following files will be generated:
 
 ## run MultiWFN
 - run either 
-	- `Multiwfn $BASENAME.molden.input < multi_bader.inp | tee multi_bader.out` or 
+	- TODO: `Multiwfn $BASENAME.molden.input < multi_bader.inp | tee multi_bader.out` or 
 	- `Multiwfn $BASENAME.molden.input < multi_hirsh.inp | tee multi_hirsh.out`
 
 ## analyze MultiWFN output
-- run `parse_multiwfn.py`
+- run `parse_multiwfn.py multi_*.out`

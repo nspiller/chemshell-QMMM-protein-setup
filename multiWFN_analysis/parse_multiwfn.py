@@ -7,6 +7,9 @@ import re
 import matplotlib.pylab as plt
 import seaborn as sns
 
+from matplotlib import rcParams
+rcParams['font.size'] = 34
+
 ################
 ## User Input ##
 ################
@@ -27,20 +30,15 @@ idx2name = { # this dict converts orca atom indices to sensible names (required)
 # orbital analysis
 minsum = 0.6 # consider only orbitals with at leats this much on above atoms
 thresh = 0.02 # remove single contributions below this value
-orbatoms = [a for a in idx2name.values()] # list of atoms to analyse in orbital analysis
 
 ###############
 ## HIRSHFELD ##
 ###############
-def get_fuzzy(output):
-    '''
-    ATTENTION: very unspecific parsing 
-    return df of values of interation of some function in fuzzy volumes 
-    (e.g. spin)
+def get_hirsh_spin(output):
+    '''get values of a fuzzy volume integration
 
-    ATTENTION: atom indices in MultiWFN start with 1. 
-
-    matches first occurence of 
+    return values of block given below as df (here: spin)
+    ATTENTION: MultiWFN counts from 0, returned df counts from 0 
 
    Atomic space        Value                % of sum            % of sum abs
      1(C )            0.00001069             0.000356             0.000054
@@ -53,76 +51,60 @@ def get_fuzzy(output):
     '''
 
     df = pd.DataFrame() # empty dataframe
-
     parse = False # parsing switch
+
     with open(output) as f:
         for line in f:
+            l = line.split()
 
-            if 'Atomic space Value % of sum % of sum abs' in ' '.join(line.split()): # start here
+            if 'Atomic space Value % of sum % of sum abs' in ' '.join(l): # start parsing
                 parse = True
                 continue
-            elif 'Summing up above values:' in line: # stop here 
+            elif 'Summing up above values:' in line: # stop parsing 
                 parse = False
                 continue
 
             if parse:
-                l = line.split()
                 i = int(l[0].split('(')[0]) - 1 # counting from 0
                 c = float(l[-3])
                 df.loc['Hirshfeld spin', i] = c
 
-    df = change_columns(df, idx2name, idx2name.values())
-
     return df
 
 def get_hirsh_cm5(output):
-    '''
-    return dataframe with CM5 and Hirshfeld 
-
-    counting from 0
-    matches first occurence of and terminates on empty line
-
+    '''return CM5 and Hirshfeld charges
+    
+    parses the block given below and return dataframe with Hirshfeld and CM5 charges
+    ATTENTION: MultiWFN counts from 0, returned df counts from 0 
 
                          ======= Summary of CM5 charges =======
      Atom:    1C   CM5 charge:   -0.227214  Hirshfeld charge:   -0.077632
      Atom:    2H   CM5 charge:    0.079908  Hirshfeld charge:    0.027221
      Atom:    3H   CM5 charge:    0.092847  Hirshfeld charge:    0.041910
-     Atom:    4C   CM5 charge:   -0.155276  Hirshfeld charge:   -0.048841
-     Atom:    5H   CM5 charge:    0.085117  Hirshfeld charge:    0.027582
-     Atom:    6H   CM5 charge:    0.095197  Hirshfeld charge:    0.038745
-     Atom:    7C   CM5 charge:   -0.037447  Hirshfeld charge:    0.010199
-     Atom:    8H   CM5 charge:    0.088796  Hirshfeld charge:    0.019746
-     Atom:    9H   CM5 charge:    0.104493  Hirshfeld charge:    0.034564
-     Atom:   10N   CM5 charge:   -0.431012  Hirshfeld charge:   -0.072936
-     Atom:   11H   CM5 charge:    0.293571  Hirshfeld charge:    0.097161
-     Atom:   12C   CM5 charge:    0.401691  Hirshfeld charge:    0.197201
-     Atom:   13N   CM5 charge:   -0.552805  Hirshfeld charge:   -0.106493
-     Atom:   14H   CM5 charge:    0.352662  Hirshfeld charge:    0.164065
-     Atom:   15H   CM5 charge:    0.359951  Hirshfeld charge:    0.171027
-     Atom:   16N   CM5 charge:   -0.546935  Hirshfeld charge:   -0.105064
-     '''
+     Atom:    4C   CM5 charge:   -0.155276  Hirshfeld charge:   -0.048841'''
 
-    df = pd.DataFrame()
+    df = pd.DataFrame() # initiate dataframe
+    parse = False # parsing switch
 
-    parse = False
     with open(output) as f:
         for line in f:
-            if '======= Summary of CM5 charges =======' in line:
+
+            if '======= Summary of CM5 charges =======' in line: # start parsing
                 parse = True
                 continue
-            elif 'Summing up all CM5 charges:' in line:
+            elif 'Summing up all CM5 charges:' in line: # stop parsing
                 parse = False
                 continue
 
             if parse:
                 l = line.split()
-                i = int(re.findall('^\d+', l[1])[0]) - 1
+
+                i = int(re.findall('^\d+', l[1])[0]) - 1 # counting from 0
                 hirsh = float(l[-1])
                 cm5 = float(l[-4])
+
                 df.loc['Hirshfeld charge', i] = hirsh
                 df.loc['CM5 charge', i] = cm5
-
-    df = change_columns(df, idx2name, idx2name.values())
 
     return df
 
@@ -244,132 +226,22 @@ def get_orbcomp(output, orbrange=None, firstorb=0):
 
     return df
 
-###########
-## BADER ##
-###########
-def get_basin_dict(output):
-    '''
-    returns a dictionary with {basin no: atom index} 
-    
-    basin numbering and atom numbering start with 0
-
-    expects this to be present:
-
-    Integrating in trust sphere...
-    Attractor     1 corresponds to atom    26 (S )
-    The trust radius of attractor     1 is     2.268 Bohr
-
-    Attractor     2 corresponds to atom    32 (S )
-    The trust radius of attractor     2 is     2.121 Bohr
-
-    Attractor     3 corresponds to atom    29 (S )
-    ...
-    '''
-    d = {} # empty dict
-
-    with open(output) as f:
-        for line in f:
-
-            if 'corresponds to atom' in line: # only these lines
-                l = line.split()
-                if l[0] == 'Attractor':
-                    basin = int(l[1]) - 1  # counting from 0
-                    atom = int(l[5]) - 1 # counting from 0
-                    d[basin] = atom # write dict
-
-    return d
-
-
-def get_basin_charges(output):
-    '''
-    read multiwfn output and returns datafrme
-
-    counting of atoms starts with 0
-
-    function starts reading at
-     The atomic charges after normalization and atomic volumes:
-          1 (C )    Charge:    0.104633     Volume:    68.539 Bohr^3   
-          2 (H )    Charge:   -0.037355     Volume:    51.015 Bohr^3   
-          3 (H )    Charge:   -0.038537     Volume:    50.906 Bohr^3 
-    ''' 
-    df = pd.DataFrame()
-
-    parse = False
-    with open(output) as f:
-        for line in f:
-            if 'The atomic charges after normalization and atomic volumes:' in line:
-                parse = True
-                continue
-            elif len(line.split()) == 0:
-                parse = False
-                continue
-
-            if parse:
-                l = line.split()
-                i = int(l[0]) - 1 # start at 0
-                c = float(l[-4])
-                df.loc['Bader charge', i] = c 
-
-    df = change_columns(df, idx2name, idx2name.values())
-
-    return df 
-
-
-def get_basin_spin(output):
-    '''
-    read multiwfn output and returns datafrme
-
-    counting of atoms starts with 0
-
-    function starts reading at
-
-    Total result:
-    Atom       Basin       Integral(a.u.)   Vol(Bohr^3)   Vol(rho>0.001)
-    1 (C )      35          0.00943089       191.980        68.587
-    2 (H )      29          0.00322007       664.040        50.814
-    3 (H )      36          0.00118925       564.645        50.894
-    ...
-    ''' 
-    df = pd.DataFrame()
-
-    parse = False
-    with open(output) as f:
-        for line in f:
-            if 'Atom       Basin       Integral(a.u.)   Vol(Bohr^3)   Vol(rho>0.001)' in line:
-                parse = True
-                continue
-            elif 'Sum of above integrals:' in line:
-                parse = False
-                continue
-
-            if parse:
-                l = line.split()
-                i = int(l[0]) - 1 # start at 0
-                c = float(l[-3])
-                df.loc['Bader spin', i] = c 
-
-    df = change_columns(df, idx2name, idx2name.values())
-
-    return df 
 
 ########################
 ## General processing ##
 ########################
 
 def get_occ_orbitals(multiout):
-    '''
-    parse multiwfn output to get information on occupied alpha and beta orbitals
-    counting starts at 0
+    '''parse multiwfn output to get information on occupied alpha and beta orbitals
+    ATTENTION: MultiWFN counts from 1, returned values count from 0 (df.index)
+    returns df with columns=['spin', 'occ', 'erg']
 
     requires
-    mulitout    output file of multiwfn with "Pirint basic information of all orbitals" called
+    mulitout    output file of multiwfn with "Pirint basic information of all orbitals" called'''
 
-    returns df with columns=['spin', 'occ', 'erg']
-    '''
+    df = pd.DataFrame() # initiate dataframe
 
-    df = pd.DataFrame()
-
-    spindict = {
+    spindict = { # translate strings in multiwfn to integers
         'Alpha':        0,
         'Beta':         1,
         'Alpha&Beta':   2,}
@@ -377,19 +249,126 @@ def get_occ_orbitals(multiout):
     with open(multiout) as f:
         for line in f:
             l = line.split()
-            if len(l) == 8: 
-                if l[0] == 'Orbital:' and l[-2] == 'Type:':
+
+            if len(l) == 8 and l[0] == 'Orbital:' and l[-2] == 'Type:':
                     n = int(l[1]) - 1 # adjust to counting from 0
                     e = float(l[3])
                     s = l[-1]
                     o = float(l[-3])
 
-                    if o != 0.0:
+                    if o != 0.0: # only consider occupied orbitals
                         df.loc[n,'spin'] = spindict[s]
                         df.loc[n, 'occ'] = o
                         df.loc[n, 'erg'] = e
 
     return df
+
+
+def get_qmatoms(qmatoms):
+    '''
+    returns a list of indices appearing in the same order of the orca xyz 
+    reads the single line file qmatoms
+    '''
+    with open(qmatoms) as f:
+        # get rid of anything but numbers
+
+        line = f.readline().strip()
+        line = line.lstrip('set qmatoms {')
+        line = line.rstrip('}')
+
+        # make list of chemshell indices
+        indices = [ int(i) for i in line.split() ]
+        indices.sort()
+
+        return indices
+
+def get_atom_psf(psf, aName, resName=None, resID=None, segName=None, conservative=True):    
+    '''
+    get atom serial number from psf file (XPLOR format)
+    atom number as appearing in psf file (numbering starts with 1)
+
+    first match for atom name [optional: + residue name, +residue id, + segName]
+
+    required: 
+    aName            atom name e.g. HE1
+    optional: 
+    resName         residue name such as MET
+    resID           residue ID such as 356
+    segName         segment name such as ENZ1
+    conservative    parsing algorithm: False for regex, True for format string (faster)
+    '''
+
+    switch = False
+    on = '!NATOM'
+
+    if conservative == True:
+        off = ''
+        with open(psf) as f:
+            for line in f:
+                if on in line:
+                    switch = True
+                    continue
+                elif off == line:
+                    switch = False
+                
+                if switch:
+                    an = line[38:47].strip()
+                    if an == aName:
+                        i = int(line[0:10].strip())
+                        sn = line[11:20].strip()
+                        ri = int(line[20:29].strip())
+                        rn = line[29:38].strip()
+                        if ( rn == resName or resName == None) and ( 
+                        ri == resID or resID == None) and ( 
+                        sn == segName or segName == None ):
+                            return i
+            return None
+
+    elif conservative == False:
+        off = re.compile('^\s*$')
+        match = re.compile(
+            '^\s*'
+            '(?P<i>\d+)'
+            '\s*'
+            '(?P<sn>[\w\d]+)'
+            '\s*'
+            '(?P<ri>\d+)'
+            '\s*'
+            '(?P<rn>[\w\d]+)'
+            '\s*'
+            '(?P<an>[\w\d]+)'
+            '\s*'
+            '(?P<at>[\w\d]+)'
+            '\s*'
+            '(?P<c>-?\d+\.\d+)'
+            '\s*'
+            '(?P<w>\d+\.\d+)'
+            '\s*'
+            '(?P<n>\d+)'
+            '\s*$'
+            )
+        with open(psf) as f:
+            for line in f:
+                if on in line:
+                    switch = True
+                    continue
+                elif off.search(line):
+                    switch = False
+
+                if switch:
+                    if aName in line:
+                        d = match.search(line).groupdict()
+                        i = int(d['i'])
+                        sn = d['sn']
+                        ri = int(d['ri'])
+                        rn = d['rn']
+                        an = d['an']
+                        
+                        if an == aName and ( 
+                        rn == resName or resName == None) and ( 
+                        ri == resID or resID == None) and ( 
+                        sn == segName or segName == None ):
+                            return i
 
 def change_rows(df, d, l):
     '''
@@ -406,29 +385,29 @@ def change_rows(df, d, l):
 
     return df
 
-def change_columns(df, d, l):
-    '''
-    convert the columns of dataframe
+def change_columns(df, d):
+    '''remove and rename columns in a dataframe
+
+    all coloumns in df that are not keys in d are removed
+    all columns in df that are keys in d are renamed according to d
+    returns modified dataframe
 
     df      dataframe
-    d       dict with oldcol: newcol
-    l       list of newcol
+    d       dict with oldcol: newcol'''
 
-    returns df with only newcol as columns
-    '''
+    df = df.loc[:,d.keys()]
     df.rename(columns=d, inplace=True)
-    df = df.loc[:,l]
 
     return df
 
-def nicefy_orbcomp(df, minsum, thresh, label='a'):
+def nicefy_orbcomp(df, idx2name, minsum, thresh, label='a'):
     '''
     *) rename columns 
     *) remove all values below thresh
     *) remove all rows with less than minsum as sum
     '''
 
-    df = change_columns(df, idx2name, orbatoms)
+    df = change_columns(df, idx2name)
     
     # delete uninteresting orbitals from dataframe
     df.loc[:, 'sum'] = df.loc[:, : ].sum(axis=1) # create sum column
@@ -446,132 +425,117 @@ def nicefy_orbcomp(df, minsum, thresh, label='a'):
 ## Plotting ##
 ##############
 
+def save_plt(fig, path):
+    if path:
+        fig.savefig(path, transparent=False)
+
 def plt_charge_spin(df_charge, df_spin, path):
-    '''
-    df_charge
-    df_spin
-    path        file name to save plot
-    '''
+    '''plot charge and spin dataframe in one figure
 
-    x = 7 #len( df_charge.columns) 
-    fig, axarr = plt.subplots(nrows=2, figsize=(x, 3) )
+    required
+    df_charge   dataframe with charges
+    df_spin     dataframe with spin populations
+    path        file name to save plot'''
 
-    kw_args = {
+    x = len(df_charge.columns) 
+    fig, axarr = plt.subplots(nrows=2, figsize=(3*x, 8) )
+
+    kw_args = { # settings for both subplots
         'linewidth': 0.5,
         'yticklabels': True,
         'annot': True, 
         'fmt': '.3f', 
         'annot_kws': { 'fontfamily': 'monospace'}, }
 
+    # plot charge to first axis
     ax = axarr[0]
     ax.set_title('Charge')
     sns.heatmap( df_charge.iloc[0:1,:], ax=ax, cmap='viridis_r', **kw_args )
 
+    # plot spin to second axis
     ax = axarr[1]
     ax.set_title('Spin')
     sns.heatmap( df_spin, ax=ax, cmap='seismic_r', **kw_args )
 
+    for ax in axarr:
+        ax.tick_params(axis='both', labelrotation=0)
+
     fig.tight_layout()
-    fig.savefig(path)
+    save_plt(fig, path)
 
 def plt_orbcomp(df, path):
-    '''
-    plots localized orbitals
+    '''create plot for orbital composition
+    takes dataframe with orbital compositions and creates a plot at path
 
     requires
     df          dataframe
-    path        path to save figure
-    '''
+    path        path to save figure'''
 
-    y, x = len(df.index), len(df.columns)
-    fig, ax = plt.subplots(figsize=(x, y*0.5))
+    y, x = len(df.index), len(df.columns) # autogenerate figure size
+    fig, ax = plt.subplots(figsize=(x*2, y*1)) # create figure and axis
 
-    sns.heatmap(
+    sns.heatmap( # plot seaborn heatmap
         df, 
         cmap='twilight', vmin=0, vmax=1, 
         xticklabels=True, yticklabels=True, linewidth=0.5,
         annot=True, fmt='.2f', annot_kws={ 'fontfamily': 'monospace'},)
 
-    ax.tick_params(axis='y', which='major', )
+    ax.tick_params(axis='y', which='major')
+    ax.tick_params(axis='both', labelrotation=.5)
+    ax.tick_params(top=True, labeltop=True)
 
     fig.tight_layout()
-    fig.savefig(path)
+    save_plt(fig, path)
 
 if __name__ == '__main__':
     from pathlib import Path
     import argparse
     import sys
 
-    parser = argparse.ArgumentParser()
-#    parser.add_argument('method', help='specify either hirsh (for Hirshfeld) or bader (for Bader QTAIM)')
     #TODO: force overwrite function
+    #TODO: logging function
+    parser = argparse.ArgumentParser()
+    parser.add_argument('multi_out', help='MultiWFN output file')
     args = parser.parse_args()
-    # TODO: logging function
 
-    # files relevant here
-    hirsh_out = Path('multi_hirsh.out')
-    bader_out = Path('multi_bader.out')
-    lidi_out = Path('LIDI.txt')
-    orbcomp_out = Path('orbcomp.txt')
+    # input files
+    multi = Path(args.multi_out)
+    lidi = multi.parent / 'LIDI.txt' 
+    orbcomp = multi.parent / 'orbcomp.txt'
 
-    # output
+    # output files
     charge_spin_sheet = Path('charge_spin.xlsx')
     charge_spin_fig = Path('charge_spin.png')
     orbcomp_sheet = Path('orbital_composition.xlsx')
     orbcomp_fig = Path('orbital_composition.png')
 
-    # bools for parsing of each file
-    hirsh, bader, lidi, orbcomp = [ False for _ in range(4) ] # set True later if file found
+    if multi.is_file():
+        print('Now processing {} ...'.format(multi.name))
 
-    if hirsh_out.is_file() and bader_out.is_file():
-        print('Found both {} and {}: I do not know what to do'.format(hirsh_out.name, bader_out.name))
-        sys.exit()
-    elif hirsh_out.is_file():
-        print('{} found, setting parsing environment to Hirshfeld'.format(hirsh_out.name))
-        hirsh = True
-    elif bader_out.is_file():
-        print('{} found, setting parsing environment to Bader'.format(bader_out.name))
-        bader = True
-    else:
-        print('Found neither {} and {}: I do not know what to do'.format(hirsh_out.name, bader_out.name))
-        sys.exit()
-
-    if lidi_out.is_file():
-        print('{} found'.format(lidi_out.name))
-        lidi = True
-    else: 
-        print('{} NOT found'.format(lidi_out.name))
-        
-    if orbcomp_out.is_file():
-        print('{} found'.format(orbcomp_out.name))
-        orbcomp = True
-    else:
-        print('{} NOT found'.format(orbcomp_out.name))
-
-        # Hirshfeld
-    if hirsh:
         # charge
-        df_charge = get_hirsh_cm5(hirsh_out.name)
+        print('    ... getting charges'.format(multi.name))
+        df_charge = get_hirsh_cm5(multi.name)
+        df_charge = change_columns(df_charge, idx2name) 
 
         #spin
-        df_spin = get_fuzzy(hirsh_out.name)
+        print('    ... getting spin populations'.format(multi.name))
+        df_spin = get_hirsh_spin(multi.name)
+        df_spin = change_columns(df_spin, idx2name) 
 
-        # merge charge and spin and write output
+        # merge charge and spin
         df_charge_spin = pd.concat([df_charge, df_spin])
+
+        # write output
+        print('    ... writing charges and spin population:\n        {}\n        {}'.format(charge_spin_sheet, charge_spin_fig))
         df_charge_spin.to_excel(charge_spin_sheet)
         plt_charge_spin( df_charge, df_spin, path=charge_spin_fig)
+        print('    ... done!')
 
+        if orbcomp.is_file():
+            print('Now processing {} ...'.format(orbcomp.name))
 
-#
-#            # LIDI
-#            if lidi:
-#                df_lidi_deloca, df_lidi_delocb, df_lidi_delocab, df_lidi_loca, df_lidi_locb, df_lidi_locab = get_lidi(lidi_out) 
-#
-        # orbital analysis
-        if orbcomp:
-            
-            # determine orbital ranges
-            df_occ = get_occ_orbitals(hirsh_out)
+            # determine orbital ranges in multiwfn numbering
+            df_occ = get_occ_orbitals(multi)
 
             df_alpha = df_occ.loc[ (df_occ.loc[:,'spin'] == 0) & (df_occ.loc[:,'erg'] > -1) ]
             df_beta  = df_occ.loc[ (df_occ.loc[:,'spin'] == 1) & (df_occ.loc[:,'erg'] > -1) ]
@@ -581,41 +545,25 @@ if __name__ == '__main__':
             nalpha = df_occ.loc[ df_occ.loc[:,'spin'] == 1 ].index.min()
             
             # parse orbcomp.txt
-            df_orbcompa = get_orbcomp(orbcomp_out, arange)
-            df_orbcompb = get_orbcomp(orbcomp_out, brange, firstorb=nalpha)
+            print('    ... reading {}'.format(orbcomp.name))
+            df_orbcompa = get_orbcomp(orbcomp, arange)
+            df_orbcompb = get_orbcomp(orbcomp, brange, firstorb=nalpha)
             
             # remove va
-            df_orbcompa = nicefy_orbcomp(df_orbcompa, minsum, thresh, label='a')
-            df_orbcompb = nicefy_orbcomp(df_orbcompb, minsum, thresh, label='b')
+            df_orbcompa = nicefy_orbcomp(df_orbcompa, idx2name, minsum, thresh, label='a')
+            df_orbcompb = nicefy_orbcomp(df_orbcompb, idx2name, minsum, thresh, label='b')
 
             # concatenate a and b 
             df_orbcompab = pd.concat([ df_orbcompa, df_orbcompb ])
            
-            # excel sheet
+            # excel sheet and figure
+            print('    ... writing orbital compositions:\n        {}\n        {}'.format(orbcomp_sheet, orbcomp_fig))
             df_orbcompab.to_excel(orbcomp_sheet)
-
-            # figure 
             plt_orbcomp(df=df_orbcompab, path=orbcomp_fig)
+            print('    ... done!')
+        else:
+            print('{} NOT found. Orbitals will not be analyzed'.format(orbcomp.name))
 
-
-
-        # Bader
-        elif bader:
-            # dict to convert basin (starts at 0) to atoms (starts at 0)
-            basin2atom = get_basin_dict(bader_out.name)
-
-            # charge (in ATOM basis)
-            df_charge = get_basin_charges(bader_out.name)
-            
-            # spin (in ATOM basis)
-            df_spin = get_basin_spin(bader_out.name)
-
-            # LIDI (in BASIN basis)
-            if lidi:
-                df_lidi_deloca, df_lidi_delocb, df_lidi_delocab, df_lidi_loca, df_lidi_locb, df_lidi_locab = get_lidi(lidi_out) 
-
-            # orbital analysis (in BASIN basis)
-            if orbcomp: 
-                arange, brange = get_occ_orbitals(bader_out)
-                df_orbcomp = get_orbcomp(orbcomp_out)
-                # TODO: test orbcomp Bader
+    else: 
+        print('{} NOT found. Cannot continue and will exit now'.format(multi.name))
+        sys.exit()
