@@ -4,6 +4,10 @@ import numpy as np
 import pandas as pd
 import re
 
+from pathlib import Path
+import argparse
+import sys
+
 import matplotlib.pylab as plt
 import seaborn as sns
 
@@ -15,7 +19,7 @@ rcParams['font.size'] = 34
 ################
 
 # atoms to analyse 
-idx2name = { # this dict converts orca atom indices to sensible names (required)
+orca2name = { # this dict converts orca atom indices to sensible names (required)
     15: 'Mo',
     16: 'Fe1',
     17: 'Fe2',
@@ -71,7 +75,7 @@ def get_hirsh_spin(output):
 
     return df
 
-def get_hirsh_cm5(output):
+def get_hirsh_charge(output):
     '''return CM5 and Hirshfeld charges
     
     parses the block given below and return dataframe with Hirshfeld and CM5 charges
@@ -282,80 +286,66 @@ def get_qmatoms(qmatoms):
 
         return indices
 
-def get_atom_psf(psf, aName, resName=None, resID=None, segName=None, conservative=True):    
-    '''
+def get_atom_psf(psf, aName, resName=None, resID=None, segName=None, fast=True):    
+    '''find atom index in psf file based on atom information
+
     get atom serial number from psf file (XPLOR format)
     atom number as appearing in psf file (numbering starts with 1)
 
     first match for atom name [optional: + residue name, +residue id, + segName]
 
     required: 
-    aName            atom name e.g. HE1
+    aName           atom name e.g. HE1
     optional: 
     resName         residue name such as MET
     resID           residue ID such as 356
     segName         segment name such as ENZ1
-    conservative    parsing algorithm: False for regex, True for format string (faster)
-    '''
+    fast            bool: parsing algorithm: False for regex, True for format string (faster)'''
 
-    switch = False
-    on = '!NATOM'
+    match = re.compile( # regex for slow matching
+        '^\s*'
+        '(?P<i>\d+)'
+        '\s*'
+        '(?P<sn>[\w\d]+)'
+        '\s*'
+        '(?P<ri>\d+)'
+        '\s*'
+        '(?P<rn>[\w\d]+)'
+        '\s*'
+        '(?P<an>[\w\d]+)'
+        '\s*'
+        '(?P<at>[\w\d]+)'
+        '\s*'
+        '(?P<c>-?\d+\.\d+)'
+        '\s*'
+        '(?P<w>\d+\.\d+)'
+        '\s*'
+        '(?P<n>\d+)'
+        '\s*$'
+        )
 
-    if conservative == True:
-        off = ''
-        with open(psf) as f:
-            for line in f:
-                if on in line:
-                    switch = True
-                    continue
-                elif off == line:
-                    switch = False
-                
-                if switch:
-                    an = line[38:47].strip()
-                    if an == aName:
+
+    with open(psf) as f:
+
+        parse = False
+        for line in f:
+            if '!NATOM' in line: # start here
+                parse = True
+                continue
+            elif len(line.split()) == 0: # stop on emtpy line
+                parse = False
+            
+            if parse:
+                if fast: # fast
+                    an = line[38:47].strip() 
+                    if an == aName: # only continue if atomname matches
                         i = int(line[0:10].strip())
                         sn = line[11:20].strip()
                         ri = int(line[20:29].strip())
                         rn = line[29:38].strip()
-                        if ( rn == resName or resName == None) and ( 
-                        ri == resID or resID == None) and ( 
-                        sn == segName or segName == None ):
-                            return i
-            return None
-
-    elif conservative == False:
-        off = re.compile('^\s*$')
-        match = re.compile(
-            '^\s*'
-            '(?P<i>\d+)'
-            '\s*'
-            '(?P<sn>[\w\d]+)'
-            '\s*'
-            '(?P<ri>\d+)'
-            '\s*'
-            '(?P<rn>[\w\d]+)'
-            '\s*'
-            '(?P<an>[\w\d]+)'
-            '\s*'
-            '(?P<at>[\w\d]+)'
-            '\s*'
-            '(?P<c>-?\d+\.\d+)'
-            '\s*'
-            '(?P<w>\d+\.\d+)'
-            '\s*'
-            '(?P<n>\d+)'
-            '\s*$'
-            )
-        with open(psf) as f:
-            for line in f:
-                if on in line:
-                    switch = True
-                    continue
-                elif off.search(line):
-                    switch = False
-
-                if switch:
+                        if ( rn == resName or resName == None ) and ( ri == resID or resID == None ) and ( sn == segName or segName == None ):
+                            return i # terminate once found
+                else: # regex
                     if aName in line:
                         d = match.search(line).groupdict()
                         i = int(d['i'])
@@ -364,28 +354,28 @@ def get_atom_psf(psf, aName, resName=None, resID=None, segName=None, conservativ
                         rn = d['rn']
                         an = d['an']
                         
-                        if an == aName and ( 
-                        rn == resName or resName == None) and ( 
-                        ri == resID or resID == None) and ( 
-                        sn == segName or segName == None ):
+                        if an == aName and ( rn == resName or resName == None ) and ( ri == resID or resID == None ) and ( sn == segName or segName == None ):
                             return i
 
-def change_rows(df, d, l):
-    '''
-    convert the indices of dataframe
+        return None # if not found
 
-    df      dataframe
-    d       dict with oldidx: newidx
-    l       list of newidx
 
-    returns df with only newidx as indices
-    '''
-    df.rename(index=d, inplace=True)
-    df = df.loc[l]
+#def change_rows(df, d, l):
+#    '''
+#    convert the indices of dataframe
+#
+#    df      dataframe
+#    d       dict with oldidx: newidx
+#    l       list of newidx
+#
+#    returns df with only newidx as indices
+#    '''
+#    df.rename(index=d, inplace=True)
+#    df = df.loc[l]
+#
+#    return df
 
-    return df
-
-def change_columns(df, d):
+def rename_columns(df, d):
     '''remove and rename columns in a dataframe
 
     all coloumns in df that are not keys in d are removed
@@ -400,14 +390,14 @@ def change_columns(df, d):
 
     return df
 
-def nicefy_orbcomp(df, idx2name, minsum, thresh, label='a'):
+def nicefy_orbcomp(df, orca2name, minsum, thresh, label='a'):
     '''
     *) rename columns 
     *) remove all values below thresh
     *) remove all rows with less than minsum as sum
     '''
 
-    df = change_columns(df, idx2name)
+    df = rename_columns(df, orca2name)
     
     # delete uninteresting orbitals from dataframe
     df.loc[:, 'sum'] = df.loc[:, : ].sum(axis=1) # create sum column
@@ -415,7 +405,7 @@ def nicefy_orbcomp(df, idx2name, minsum, thresh, label='a'):
 
     df = df.apply( lambda x: [y if y > thresh else np.nan for y in x])
     
-    df.sort_values([ i for i in idx2name.values()], inplace=True, ascending=False) # sort
+    df.sort_values([ i for i in orca2name.values()], inplace=True, ascending=False) # sort
 
     df = df.rename(lambda x: '{}{}'.format(x, label))
 
@@ -487,10 +477,8 @@ def plt_orbcomp(df, path):
     fig.tight_layout()
     save_plt(fig, path)
 
-if __name__ == '__main__':
-    from pathlib import Path
-    import argparse
-    import sys
+def run():
+    'run from command line'
 
     #TODO: force overwrite function
     #TODO: logging function
@@ -514,13 +502,13 @@ if __name__ == '__main__':
 
         # charge
         print('    ... getting charges'.format(multi.name))
-        df_charge = get_hirsh_cm5(multi.name)
-        df_charge = change_columns(df_charge, idx2name) 
+        df_charge = get_hirsh_charge(multi.name)
+        df_charge = rename_columns(df_charge, orca2name) 
 
         #spin
         print('    ... getting spin populations'.format(multi.name))
         df_spin = get_hirsh_spin(multi.name)
-        df_spin = change_columns(df_spin, idx2name) 
+        df_spin = rename_columns(df_spin, orca2name) 
 
         # merge charge and spin
         df_charge_spin = pd.concat([df_charge, df_spin])
@@ -550,8 +538,8 @@ if __name__ == '__main__':
             df_orbcompb = get_orbcomp(orbcomp, brange, firstorb=nalpha)
             
             # remove va
-            df_orbcompa = nicefy_orbcomp(df_orbcompa, idx2name, minsum, thresh, label='a')
-            df_orbcompb = nicefy_orbcomp(df_orbcompb, idx2name, minsum, thresh, label='b')
+            df_orbcompa = nicefy_orbcomp(df_orbcompa, orca2name, minsum, thresh, label='a')
+            df_orbcompb = nicefy_orbcomp(df_orbcompb, orca2name, minsum, thresh, label='b')
 
             # concatenate a and b 
             df_orbcompab = pd.concat([ df_orbcompa, df_orbcompb ])
@@ -567,3 +555,6 @@ if __name__ == '__main__':
     else: 
         print('{} NOT found. Cannot continue and will exit now'.format(multi.name))
         sys.exit()
+
+if __name__ == '__main__':
+    run()
