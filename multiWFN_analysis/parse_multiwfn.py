@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
 
+################
+## User Input ##
+################
+
+orca2name = { # this dict converts orca atom indices to sensible names (required)
+    15: 'Mo',
+    16: 'Fe1',
+    17: 'Fe2',
+    18: 'Fe3',
+    19: 'Fe4',
+    20: 'Fe5',
+    21: 'Fe6',
+    22: 'Fe7',
+}
+
 import numpy as np
 import pandas as pd
 import re
@@ -13,27 +28,6 @@ import seaborn as sns
 
 from matplotlib import rcParams
 rcParams['font.size'] = 34
-
-################
-## User Input ##
-################
-
-# atoms to analyse 
-orca2name = { # this dict converts orca atom indices to sensible names (required)
-    15: 'Mo',
-    16: 'Fe1',
-    17: 'Fe2',
-    18: 'Fe3',
-    19: 'Fe4',
-    20: 'Fe5',
-    21: 'Fe6',
-    22: 'Fe7',
-}
-
-
-# orbital analysis
-minsum = 0.6 # consider only orbitals with at leats this much on above atoms
-thresh = 0.02 # remove single contributions below this value
 
 ###############
 ## HIRSHFELD ##
@@ -196,15 +190,13 @@ def get_lidi(output):
         # return all six dataframes
         return df_deloc_a, df_deloc_b, df_deloc_tot, df_loc_a, df_loc_b, df_loc_tot
 
-
-def get_orbcomp(output, orbrange=None, firstorb=0):
-    '''
-    returns pandas dataframe from orbcomp.txt, counting from 0
+def read_orbcomp(output, orb_i=0, orb_f=np.inf, orb_0=0):
+    '''creates pandas dataframe from orbcomp.txt, counting from 0
 
     optional
-    orbrange        tuple of first and last index (counting from 0)
-    firstorb        index of first orbital (default: 0), required for beta
-    '''
+    orb_i       first orbital index (counting from 0)
+    orb_f       last orbital index
+    orb_0       index for start counting (default: 0), required for beta'''
 
     df = pd.DataFrame() # empty DataFrame
 
@@ -216,17 +208,59 @@ def get_orbcomp(output, orbrange=None, firstorb=0):
                 n = int(l[1]) - 1 # adjust to ORCA counting
                 continue
 
-            if orbrange: # dont parse if out of range
-                if orbrange[0] > n:
-                    continue
-                elif orbrange[1] < n:
-                    break
+            # dont parse if out of range
+            if orb_i > n:
+                continue
+            elif orb_f < n:
+                break
 
             l = line.split()
             i = int(l[0]) - 1 # adjust to ORCA counting
             c = float(l[1]) / 100 # convert to 0 < c < 1
 
-            df.loc[n - firstorb, i] = c
+            df.loc[n - orb_0, i] = c
+
+    return df
+
+def get_orb(multi, orbcomp, spin, orca2name, minerg, minsum, thresh):
+    '''creates dataframe with orbitals that are localized on certain atoms
+
+    requires
+    multi       multiwfn output with "-1 # Print basic information of all orbitals" called
+    orbcomp     location of 'ORBCOMP.txt' file
+    spin        electron spin. 0 for alpha, 1 for beta
+    orca2name   dictionary connection orca index with user defined name
+    minerg      ignore orbitals with energies lower than this
+    minsum      ignore orbitals with summed contributions (according to orca2name) lower than this
+    thresh      remove single atomic contributions lower than this (to enhance readability)'''
+
+    # first: get orbital numbers from multiwfn output
+    # determine orbital ranges in multiwfn numbering
+    df = get_occ_orbitals(multi)
+
+    df_subset = df.loc[ (df.loc[:,'spin'] == spin) & (df.loc[:,'erg'] > minerg) ]
+
+    orb_i, orb_f = df_subset.index.min(), df_subset.index.max()
+    orb_0 = df.loc[ df.loc[:,'spin'] == 1 ].index.min() if spin == 1 else 0
+
+    # second: only get specific orbitals from orbcomp.txt
+    df = read_orbcomp(orbcomp, orb_i, orb_f, orb_0) # new dataframe df!
+    
+    # third: only keep orbitals with certain contributions
+    df = rename_columns(df, orca2name)
+    
+    # delete uninteresting orbitals from dataframe
+    df.loc[:, 'sum'] = df.loc[:, : ].sum(axis=1) # create sum column
+    df = df.loc[ df['sum'] > minsum, : ]
+
+    # remove small contributions
+    df = df.apply( lambda x: [y if y > thresh else np.nan for y in x])
+    
+    # sort values into blocks
+    df.sort_values([ i for i in orca2name.values()], inplace=True, ascending=False) # sort
+
+    # append 'a' or 'b' to number to distinguish spin
+    df = df.rename(lambda x: '{}{}'.format(x, 'a' if spin == 0 else 'b'))
 
     return df
 
@@ -360,21 +394,6 @@ def get_atom_psf(psf, aName, resName=None, resID=None, segName=None, fast=True):
         return None # if not found
 
 
-#def change_rows(df, d, l):
-#    '''
-#    convert the indices of dataframe
-#
-#    df      dataframe
-#    d       dict with oldidx: newidx
-#    l       list of newidx
-#
-#    returns df with only newidx as indices
-#    '''
-#    df.rename(index=d, inplace=True)
-#    df = df.loc[l]
-#
-#    return df
-
 def rename_columns(df, d):
     '''remove and rename columns in a dataframe
 
@@ -390,26 +409,6 @@ def rename_columns(df, d):
 
     return df
 
-def nicefy_orbcomp(df, orca2name, minsum, thresh, label='a'):
-    '''
-    *) rename columns 
-    *) remove all values below thresh
-    *) remove all rows with less than minsum as sum
-    '''
-
-    df = rename_columns(df, orca2name)
-    
-    # delete uninteresting orbitals from dataframe
-    df.loc[:, 'sum'] = df.loc[:, : ].sum(axis=1) # create sum column
-    df = df.loc[ df['sum'] > minsum, : ]
-
-    df = df.apply( lambda x: [y if y > thresh else np.nan for y in x])
-    
-    df.sort_values([ i for i in orca2name.values()], inplace=True, ascending=False) # sort
-
-    df = df.rename(lambda x: '{}{}'.format(x, label))
-
-    return df
 
 ##############
 ## Plotting ##
@@ -425,7 +424,9 @@ def plt_charge_spin(df_charge, df_spin, path):
     required
     df_charge   dataframe with charges
     df_spin     dataframe with spin populations
-    path        file name to save plot'''
+    path        file name to save plot
+
+    returns nothing'''
 
     x = len(df_charge.columns) 
     fig, axarr = plt.subplots(nrows=2, figsize=(3*x, 8) )
@@ -453,13 +454,15 @@ def plt_charge_spin(df_charge, df_spin, path):
     fig.tight_layout()
     save_plt(fig, path)
 
-def plt_orbcomp(df, path):
+def plt_orb(df, path):
     '''create plot for orbital composition
     takes dataframe with orbital compositions and creates a plot at path
 
     requires
     df          dataframe
-    path        path to save figure'''
+    path        path to save figure
+
+    returns nothing'''
 
     y, x = len(df.index), len(df.columns) # autogenerate figure size
     fig, ax = plt.subplots(figsize=(x*2, y*1)) # create figure and axis
@@ -480,23 +483,34 @@ def plt_orbcomp(df, path):
 def run():
     'run from command line'
 
-    #TODO: force overwrite function
-    #TODO: logging function
+    # command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('multi_out', help='MultiWFN output file')
+    parser.add_argument('-e', '--orb_erg', metavar='ERG', default=-1, type=float, 
+        help='Only show orbitals with energy (in Ha) higher than ERG. Default: -1')
+    parser.add_argument('-s', '--orb_sum', metavar='SUM', default=.6, type=float, 
+        help='Only show orbitals that have a summed contribution (for atoms defined in orca2name) higher than SUM. Default: 0.6')
+    parser.add_argument('-t', '--orb_thresh', metavar='THRESH', default=.02, type=float, 
+        help='Remove orbital contributions on a single atom below THRESH. Default: 0.02')
     args = parser.parse_args()
 
-    # input files
+    # define input files
     multi = Path(args.multi_out)
     lidi = multi.parent / 'LIDI.txt' 
     orbcomp = multi.parent / 'orbcomp.txt'
 
-    # output files
+    # define output files
     charge_spin_sheet = Path('charge_spin.xlsx')
     charge_spin_fig = Path('charge_spin.png')
-    orbcomp_sheet = Path('orbital_composition.xlsx')
-    orbcomp_fig = Path('orbital_composition.png')
+    orb_sheet = Path('orbital_composition.xlsx')
+    orb_fig = Path('orbital_composition.png')
 
+    # define thresholds
+    minsum = args.orb_sum
+    minerg = args.orb_erg
+    thresh = args.orb_thresh
+
+    # start processing
     if multi.is_file():
         print('Now processing {} ...'.format(multi.name))
 
@@ -510,45 +524,30 @@ def run():
         df_spin = get_hirsh_spin(multi.name)
         df_spin = rename_columns(df_spin, orca2name) 
 
-        # merge charge and spin
-        df_charge_spin = pd.concat([df_charge, df_spin])
-
         # write output
         print('    ... writing charges and spin population:\n        {}\n        {}'.format(charge_spin_sheet, charge_spin_fig))
+        df_charge_spin = pd.concat([df_charge, df_spin]) # merge charge and spin
         df_charge_spin.to_excel(charge_spin_sheet)
         plt_charge_spin( df_charge, df_spin, path=charge_spin_fig)
+
         print('    ... done!')
 
         if orbcomp.is_file():
             print('Now processing {} ...'.format(orbcomp.name))
 
-            # determine orbital ranges in multiwfn numbering
-            df_occ = get_occ_orbitals(multi)
-
-            df_alpha = df_occ.loc[ (df_occ.loc[:,'spin'] == 0) & (df_occ.loc[:,'erg'] > -1) ]
-            df_beta  = df_occ.loc[ (df_occ.loc[:,'spin'] == 1) & (df_occ.loc[:,'erg'] > -1) ]
-
-            arange = ( df_alpha.index.min(), df_alpha.index.max() )
-            brange = (  df_beta.index.min(),  df_beta.index.max() )
-            nalpha = df_occ.loc[ df_occ.loc[:,'spin'] == 1 ].index.min()
-            
-            # parse orbcomp.txt
+            # orbital compositions
             print('    ... reading {}'.format(orbcomp.name))
-            df_orbcompa = get_orbcomp(orbcomp, arange)
-            df_orbcompb = get_orbcomp(orbcomp, brange, firstorb=nalpha)
-            
-            # remove va
-            df_orbcompa = nicefy_orbcomp(df_orbcompa, orca2name, minsum, thresh, label='a')
-            df_orbcompb = nicefy_orbcomp(df_orbcompb, orca2name, minsum, thresh, label='b')
+            df_orba = get_orb(multi, orbcomp, spin=0, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
+            df_orbb = get_orb(multi, orbcomp, spin=1, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
 
-            # concatenate a and b 
-            df_orbcompab = pd.concat([ df_orbcompa, df_orbcompb ])
-           
             # excel sheet and figure
-            print('    ... writing orbital compositions:\n        {}\n        {}'.format(orbcomp_sheet, orbcomp_fig))
-            df_orbcompab.to_excel(orbcomp_sheet)
-            plt_orbcomp(df=df_orbcompab, path=orbcomp_fig)
+            print('    ... writing orbital compositions:\n        {}\n        {}'.format(orb_sheet, orb_fig))
+            df_orbab = pd.concat([ df_orba, df_orbb ]) # concatenate a and b 
+            df_orbab.to_excel(orb_sheet)
+            plt_orb(df=df_orbab, path=orb_fig)
+
             print('    ... done!')
+
         else:
             print('{} NOT found. Orbitals will not be analyzed'.format(orbcomp.name))
 
