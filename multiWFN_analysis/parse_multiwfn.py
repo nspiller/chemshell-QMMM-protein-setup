@@ -5,7 +5,6 @@
 ################
 
 orca2name = { # this dict converts orca atom indices to sensible names (required)
-    15: 'Mo',
     16: 'Fe1',
     17: 'Fe2',
     18: 'Fe3',
@@ -13,6 +12,7 @@ orca2name = { # this dict converts orca atom indices to sensible names (required
     20: 'Fe5',
     21: 'Fe6',
     22: 'Fe7',
+    15: 'Mo',
 }
 
 import numpy as np
@@ -27,7 +27,7 @@ import matplotlib.pylab as plt
 import seaborn as sns
 
 from matplotlib import rcParams
-rcParams['font.size'] = 34
+rcParams['figure.dpi'] = 200
 
 ###############
 ## HIRSHFELD ##
@@ -256,8 +256,10 @@ def get_orb(multi, orbcomp, spin, orca2name, minerg, minsum, thresh):
     # remove small contributions
     df = df.apply( lambda x: [y if y > thresh else np.nan for y in x])
     
-    # sort values into blocks
-    df.sort_values([ i for i in orca2name.values()], inplace=True, ascending=False) # sort
+    # sort values into blocks with > 0.5
+    sort_mask = df.where(df > 0.5).sort_values(by=list( df.columns ), ascending=False) # sort mask
+    sort_idx = sort_mask.index # order of row for sorting
+    df = df.loc[sort_idx, :] # apply
 
     # append 'a' or 'b' to number to distinguish spin
     df = df.rename(lambda x: '{}{}'.format(x, 'a' if spin == 0 else 'b'))
@@ -414,11 +416,11 @@ def rename_columns(df, d):
 ## Plotting ##
 ##############
 
-def save_plt(fig, path):
+def save_fig(fig, path):
     if path:
         fig.savefig(path, transparent=False)
 
-def plt_charge_spin(df_charge, df_spin, path):
+def plt_charge_spin(df_charge, df_spin):
     '''plot charge and spin dataframe in one figure
 
     required
@@ -452,9 +454,10 @@ def plt_charge_spin(df_charge, df_spin, path):
         ax.tick_params(axis='both', labelrotation=0)
 
     fig.tight_layout()
-    save_plt(fig, path)
 
-def plt_orb(df, path):
+    return fig
+
+def plt_orb(df):
     '''create plot for orbital composition
     takes dataframe with orbital compositions and creates a plot at path
 
@@ -465,7 +468,7 @@ def plt_orb(df, path):
     returns nothing'''
 
     y, x = len(df.index), len(df.columns) # autogenerate figure size
-    fig, ax = plt.subplots(figsize=(x*2, y*1)) # create figure and axis
+    fig, ax = plt.subplots(figsize=(x*.7, y*.3)) # create figure and axis
 
     sns.heatmap( # plot seaborn heatmap
         df, 
@@ -478,7 +481,8 @@ def plt_orb(df, path):
     ax.tick_params(top=True, labeltop=True)
 
     fig.tight_layout()
-    save_plt(fig, path)
+
+    return fig
 
 def run():
     'run from command line'
@@ -528,7 +532,8 @@ def run():
         print('    ... writing charges and spin population:\n        {}\n        {}'.format(charge_spin_sheet, charge_spin_fig))
         df_charge_spin = pd.concat([df_charge, df_spin]) # merge charge and spin
         df_charge_spin.to_excel(charge_spin_sheet)
-        plt_charge_spin( df_charge, df_spin, path=charge_spin_fig)
+        fig_charge_spin = plt_charge_spin( df_charge, df_spin)
+        save_fig(fig_charge_spin, path=charge_spin_fig)
 
         print('    ... done!')
 
@@ -544,7 +549,8 @@ def run():
             print('    ... writing orbital compositions:\n        {}\n        {}'.format(orb_sheet, orb_fig))
             df_orbab = pd.concat([ df_orba, df_orbb ]) # concatenate a and b 
             df_orbab.to_excel(orb_sheet)
-            plt_orb(df=df_orbab, path=orb_fig)
+            fig_orb = plt_orb(df=df_orbab)
+            save_fig(fig_orb, path=orb_fig)
 
             print('    ... done!')
 
