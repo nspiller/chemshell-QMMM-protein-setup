@@ -20,14 +20,14 @@ Optional are:
 - ORCA output file for automatic determination of orbital ranges for localization
 - `qmatoms` and `xplor.psf` file for easy mapping of atom indices
 
-# quick start
-- run
-	- `write_orca_loc_input.py orca.out`
+# quick start: orca1.out and orca1.gbw
+- run 
+	- `write_orca_loc_input.py`
 	- `orca_loc orca_loc_alpha.inp` 
 	- `orca_loc orca_loc_beta.inp`
 	- `orca_2mkl loc -molden` 
-	- `Multiwfn $BASENAME.molden.input < multi_hirsh.inp | tee multi_hirsh.out`
-	- `parse_multiwfn.py multi_hirsh.out`
+	- `Multiwfn loc.molden.input < multi_hirsh.inp | tee multi_hirsh.out`
+	- `parse_multiwfn.py`
 	
 
 # step 1: convert GBW to molden file
