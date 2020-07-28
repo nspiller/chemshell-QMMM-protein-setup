@@ -1,4 +1,11 @@
 #!/bin/bash
+
+# carry out multiwfn analysis of orca output files
+#
+# User needs to set the path for orca, multiwfn and the parser folder
+# expects orca1.out and orca1.gbw to be present 
+
+
 #############################
 ## Environmental Variables ##
 ORCAPATH= # path to orca
