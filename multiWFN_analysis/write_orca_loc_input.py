@@ -100,7 +100,7 @@ def run():
 
     # setup command line behavior
     parser = argparse.ArgumentParser(description='determine orbital ranges from orca output and write orca_loc input files')
-    parser.add_argument('output', help='give output file of orca calulationn')
+    parser.add_argument('output', help='give output file of orca calulation')
     args = parser.parse_args()
 
     # files
