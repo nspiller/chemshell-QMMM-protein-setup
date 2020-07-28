@@ -112,13 +112,20 @@ def run():
     alphabetagbw = 'loc.gbw'
     
     # get orbital raneg of occupied orbitals with energy > -1 Ha
+    print('Reading {}'.format(orcaout))
     df = get_orbitals(orcaout)
+    print('    ... getting alpha orbital range')
     a_min, a_max = get_orbital_range(df, spin=0, minerg=-1)
+    print('    ... getting beta orbital range')
     b_min, b_max = get_orbital_range(df, spin=1, minerg=-1)
     
     # write files
+    print('Writing files for orca_loc utility')
+    print('    ... writing {}'.format(alphainput))
     write_input_file(a_min, a_max, 0, alphainput, gbw, alphagbw)
+    print('    ... writing {}'.format(betainput))
     write_input_file(b_min, b_max, 1, betainput, alphagbw, alphabetagbw)
 
+    print('    ... done!')
 if __name__ == '__main__':
     run()
