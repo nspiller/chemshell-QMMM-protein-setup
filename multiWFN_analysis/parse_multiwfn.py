@@ -25,8 +25,13 @@ from pathlib import Path
 import argparse
 import sys
 
-import matplotlib.pylab as plt
-import seaborn as sns
+try:
+    import seaborn as sns
+    import matplotlib.pylab as plt
+    rich_output = True
+except ModuleNotFoundError:
+    rich_output = False
+    print('NOTICE: Seaborn/matplotlib not found: only creating plain text files')
 
 from matplotlib import rcParams
 rcParams['figure.dpi'] = 200
@@ -446,9 +451,14 @@ def rename_columns(df, d):
     return df
 
 
-##############
-## Plotting ##
-##############
+#########################
+## Plotting and Saving ##
+#########################
+
+def write_plaintext(df, path):
+    ' write df as plaintext to path '
+    with open(path,'w') as f:
+        df.to_string(f,columns=df.columns)
 
 def save_fig(fig, path):
     if path:
@@ -539,11 +549,6 @@ def run(orca2name):
     orbcomp = multi.parent / 'orbcomp.txt'
     orca = Path(args.orca_out)
 
-    # define output files
-    charge_spin_sheet = Path('charge_spin.xlsx')
-    charge_spin_fig = Path('charge_spin.png')
-    orb_sheet = Path('orbital_composition.xlsx')
-    orb_fig = Path('orbital_composition.png')
 
     # define thresholds
     minsum = args.orb_sum
@@ -569,11 +574,20 @@ def run(orca2name):
         df_spin = rename_columns(df_spin, orca2name) 
 
         # write output
-        print('    ... writing charges and spin population:\n        {}\n        {}'.format(charge_spin_sheet, charge_spin_fig))
         df_charge_spin = pd.concat([df_charge, df_spin]) # merge charge and spin
-        df_charge_spin.to_excel(charge_spin_sheet)
-        fig_charge_spin = plt_charge_spin( df_charge, df_spin)
-        save_fig(fig_charge_spin, path=charge_spin_fig)
+
+
+        if rich_output:
+            charge_spin_sheet = Path('charge_spin.xlsx')
+            charge_spin_fig = Path('charge_spin.png')
+            print('    ... writing charges and spin population:\n        {}\n        {}'.format(charge_spin_sheet, charge_spin_fig))
+            df_charge_spin.to_excel(charge_spin_sheet)
+            fig_charge_spin = plt_charge_spin( df_charge, df_spin)
+            save_fig(fig_charge_spin, path=charge_spin_fig)
+        else:
+            charge_spin_sheet = Path('charge_spin.txt')
+            print('    ... writing charges and spin population:\n        {}'.format(charge_spin_sheet))
+            write_plaintext(df_charge_spin, charge_spin_sheet)
 
         print('    ... done!')
 
@@ -586,11 +600,21 @@ def run(orca2name):
             df_orbb = get_orb(multi, orbcomp, spin=1, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
 
             # excel sheet and figure
-            print('    ... writing orbital compositions:\n        {}\n        {}'.format(orb_sheet, orb_fig))
-            df_orbab = pd.concat([ df_orba, pd.DataFrame(data=np.nan, index=[''], columns=df_orba.columns), df_orbb ]) # concatenate a and b 
-            df_orbab.to_excel(orb_sheet)
-            fig_orb = plt_orb(df=df_orbab)
-            save_fig(fig_orb, path=orb_fig)
+            df_orbab = pd.concat([ # concatenate a and b 
+                df_orba, 
+                pd.DataFrame(data=np.nan, index=[''], columns=df_orba.columns), 
+                df_orbb ]) 
+            if rich_output:
+                orb_sheet = Path('orbital_composition.xlsx')
+                orb_fig = Path('orbital_composition.png')
+                print('    ... writing orbital compositions:\n        {}\n        {}'.format(orb_sheet, orb_fig))
+                df_orbab.to_excel(orb_sheet)
+                fig_orb = plt_orb(df=df_orbab)
+                save_fig(fig_orb, path=orb_fig)
+            else:
+                orb_sheet = Path('orbital_composition.txt')
+                print('    ... writing orbital compositions:\n        {}'.format(orb_sheet))
+                write_plaintext(df_orbab.fillna(''), orb_sheet)
 
             print('    ... done!')
 
