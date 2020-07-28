@@ -4,15 +4,17 @@
 ## User Input ##
 ################
 
-orca2name = { # this dict converts orca atom indices to sensible names (required)
-    16: 'Fe1',
-    17: 'Fe2',
-    18: 'Fe3',
-    19: 'Fe4',
-    20: 'Fe5',
-    21: 'Fe6',
-    22: 'Fe7',
-    15: 'Mo',
+# this dict converts orca atom indices to sensible names (required, if orca1.out not present)
+# fill here, if automatic determination does not work
+orca2name = { 
+#    16: 'Fe1',
+#    17: 'Fe2',
+#    18: 'Fe3',
+#    19: 'Fe4',
+#    20: 'Fe5',
+#    21: 'Fe6',
+#    22: 'Fe7',
+#    15: 'Mo',
 }
 
 import numpy as np
@@ -271,6 +273,38 @@ def get_orb(multi, orbcomp, spin, orca2name, minerg, minsum, thresh):
 ## General processing ##
 ########################
 
+def get_orca2name(output):
+    '''find Mo or V in orca output file and define names accordingly
+
+    requires
+    orcaout     orca output file
+
+    find index of either Mo or V, then defines Fe1, Fe2 etc. as following directly Mo or V
+    returns dict with { orca index: name (e.g. 'M', 'Fe1') }'''
+
+    with open(output) as f:
+
+        parse = False
+        for line in f:
+
+            if r'CARTESIAN COORDINATES (A.U.)' in line:
+                parse = True
+                next(f)
+                next(f)
+                continue
+
+            if parse:
+                l = line.split()
+                if l[1] == 'Mo' or l[1] == 'V':
+                    idx = int(l[0])
+                    break
+    
+    d = { idx + i: 'Fe{}'.format(i) for i in range(1, 8)}
+    d[idx] = 'M'
+
+    return d
+
+
 def get_occ_orbitals(multiout):
     '''parse multiwfn output to get information on occupied alpha and beta orbitals
     ATTENTION: MultiWFN counts from 1, returned values count from 0 (df.index)
@@ -484,12 +518,13 @@ def plt_orb(df):
 
     return fig
 
-def run():
+def run(orca2name):
     'run from command line'
 
     # command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('multi_out', help='MultiWFN output file')
+    parser.add_argument('multi_out', nargs='?', help='MultiWFN output file', default='multi_hirsh.out')
+    parser.add_argument('orca_out', nargs='?', help='Orca output file', default='orca1.out')
     parser.add_argument('-e', '--orb_erg', metavar='ERG', default=-1, type=float, 
         help='Only show orbitals with energy (in Ha) higher than ERG. Default: -1')
     parser.add_argument('-s', '--orb_sum', metavar='SUM', default=.6, type=float, 
@@ -502,6 +537,7 @@ def run():
     multi = Path(args.multi_out)
     lidi = multi.parent / 'LIDI.txt' 
     orbcomp = multi.parent / 'orbcomp.txt'
+    orca = Path(args.orca_out)
 
     # define output files
     charge_spin_sheet = Path('charge_spin.xlsx')
@@ -517,6 +553,10 @@ def run():
     # start processing
     if multi.is_file():
         print('Now processing {} ...'.format(multi.name))
+        # get orca indices, if orca2name dict is empty and orca output exists
+        if orca.is_file() and not orca2name:
+            print('    ... found {}'.format(orca.name))
+            orca2name = get_orca2name(orca)
 
         # charge
         print('    ... getting charges'.format(multi.name))
@@ -547,7 +587,7 @@ def run():
 
             # excel sheet and figure
             print('    ... writing orbital compositions:\n        {}\n        {}'.format(orb_sheet, orb_fig))
-            df_orbab = pd.concat([ df_orba, df_orbb ]) # concatenate a and b 
+            df_orbab = pd.concat([ df_orba, pd.DataFrame(data=np.nan, index=[''], columns=df_orba.columns), df_orbb ]) # concatenate a and b 
             df_orbab.to_excel(orb_sheet)
             fig_orb = plt_orb(df=df_orbab)
             save_fig(fig_orb, path=orb_fig)
@@ -562,4 +602,4 @@ def run():
         sys.exit()
 
 if __name__ == '__main__':
-    run()
+    run(orca2name)
