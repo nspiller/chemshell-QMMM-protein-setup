@@ -36,10 +36,10 @@ except ModuleNotFoundError:
 from matplotlib import rcParams
 rcParams['figure.dpi'] = 200
 
-###############
-## HIRSHFELD ##
-###############
-def get_hirsh_spin(output):
+#################
+## Fuzzy atoms ##
+#################
+def get_fuzzy_spin(output):
     '''get values of a fuzzy volume integration
 
     return values of block given below as df (here: spin)
@@ -52,8 +52,7 @@ def get_hirsh_spin(output):
      4(C )            0.00009353             0.003118             0.000476
      5(H )            0.00002562             0.000854             0.000130
      6(H )            0.00000051             0.000017             0.000003
-     7(C )            0.00059285             0.019762             0.003018
-    '''
+     7(C )            0.00059285             0.019762             0.003018'''
 
     df = pd.DataFrame() # empty dataframe
     parse = False # parsing switch
@@ -72,13 +71,13 @@ def get_hirsh_spin(output):
             if parse:
                 i = int(l[0].split('(')[0]) - 1 # counting from 0
                 c = float(l[-3])
-                df.loc['Hirshfeld spin', i] = c
+                df.loc['Fuzzy spin', i] = c
 
     return df
 
 def get_hirsh_charge(output):
     '''return CM5 and Hirshfeld charges
-    
+
     parses the block given below and return dataframe with Hirshfeld and CM5 charges
     ATTENTION: MultiWFN counts from 0, returned df counts from 0 
 
@@ -117,85 +116,81 @@ def get_hirsh_charge(output):
 ## LIDI.txt and orbcomp.txt ##
 ##############################
 
-def get_lidi(output):
-    '''
-    returns pandas dataframes from LIDI.txt (basin/atom numbering starts with 0)
-    '''
+def read_lidi(output):
+    '''returns contents of LIDI.txt as dataframes
+    
+    return
+    df_da       delocalization indices for alpha electrons
+    df_db       delocalization indices for beta electrons
+    df_dt       delocalization indices for all electrons
+    df_l        localization indices for alpha, beta, and all electrons'''
 
-    # six empty dataframes in total
-    df_deloc_a, df_deloc_b, df_deloc_tot = [pd.DataFrame(dtype=float) for _ in range(3)]
-    df_loc_a, df_loc_b, df_loc_tot       = [pd.DataFrame(dtype=float) for _ in range(3)]
+    df_da, df_db, df_dt = [ pd.DataFrame(dtype=float) for _ in range(3) ]
+    df_la = pd.DataFrame(dtype=float, columns=['a'])
+    df_lb = pd.DataFrame(dtype=float, columns=['b'])
+    df_lt = pd.DataFrame(dtype=float, columns=['tot'])
 
-    parse = None # flag if parsing
-
-    # localization block needs complex parser to match both basins and atoms
-    loc_regex = re.compile(
-        '((?P<i1>\d+(\(\w+\s*\))?:)\s*(?P<c1>-?\d+\.\d+))'
-        '\s*'
-        '((?P<i2>\d+(\(\w+\s*\))?:)\s*(?P<c2>-?\d+\.\d+))?'
-        '\s*'
-        '((?P<i3>\d+(\(\w+\s*\))?:)\s*(?P<c3>-?\d+\.\d+))?'
-        '\s*'
-        '((?P<i4>\d+(\(\w+\s*\))?:)\s*(?P<c4>-?\d+\.\d+))?'
-        '\s*'
-        '((?P<i5>\d+(\(\w+\s*\))?:)\s*(?P<c5>-?\d+\.\d+))?'
-        )
-
+    deloc, loc = False, False 
     with open(output) as f:
         for line in f:
 
-            # change df and parse to which part of the file is parsed
-            if 'Delocalization index matrix for alpha' in line:
-                df = df_deloc_a
-                parse = 'deloc'
-            elif 'Localization index for alpha' in line: # LIDI.txt has spin or electron here
-                df = df_loc_a
-                parse = 'loc'
-            elif 'Delocalization index matrix for beta' in line:
-                df = df_deloc_b
-                parse = 'deloc'
-            elif 'Localization index for beta' in line: # LIDI.txt has spin or electron here
-                df = df_loc_b
-                parse = 'loc'
-            elif 'Total delocalization index matrix' in line:
-                df = df_deloc_tot
-                parse = 'deloc'
-            elif 'Total localization index:' in line or 'Localization index:' in line:
-                df = df_loc_tot
-                parse = 'loc'
+            # decide on which block we are in and set df accordingly 
+            if 'delocalization' in line.lower():
+                deloc = True
+                if 'alpha' in line:
+                    df = df_da
+                elif 'beta' in line:
+                    df = df_db
+                elif 'Total' in line:
+                    df = df_dt
+                continue
+            elif 'localization' in line.lower():
+                loc = True
+                if 'alpha' in line:
+                    df = df_la
+                elif 'beta' in line:
+                    df = df_lb
+                else:
+                    df = df_lt
+                continue
             elif len(line.split()) == 0:
-                parse = None
-                
-            # all other lines contain data
-            else:
-                l = line.split()
+                deloc, loc = False, False 
+                continue
 
-                if parse == 'deloc':  # parse delocalization indices
-                    try: # deloc can be very irregular
+            # now parse
+            else:
+                if deloc:
+                    l = line.split()
+
+                    try:
                         x = l[1]
                     except IndexError:
                         x = ''
-                    if '.' not in x:
-                        i_col_range = [ int(i) - 1 for i in l ] # counting from 0
-                    elif '.' in x:
-                        i_row = int(l[0]) - 1 # counting from 0
+
+                    if '.' not in x: # if not float, it is column name
+                        i_col_range = [ int(i) for i in l ]
+
+                    elif '.' in x: # if float, it is a contribution
+                        i_row = int(l[0])
                         c_range = [ float(c) for c in l[1:] ]
-                        for i_col, c in zip(i_col_range, c_range):
-                            df.loc[i_row, i_col] = c
 
-                elif parse == 'loc': # parse localization indices
-                    m = loc_regex.search(line).groupdict()
-                    for n in range(1, 6):
-                        try:
-                            i_ = re.findall('\d+', m['i{}'.format(n)])[0] 
-                            i = int(i_) - 1
-                            c = float(m['c{}'.format(n)])
-                            df.loc[i, i ] = c
-                        except TypeError:
-                            pass
+                        for i_col, c in zip(i_col_range, c_range): # fill dataframe
+                            df.loc[i_row - 1, i_col - 1] = c # start counting from 0
 
-        # return all six dataframes
-        return df_deloc_a, df_deloc_b, df_deloc_tot, df_loc_a, df_loc_b, df_loc_tot
+                elif loc:
+                    line_ = re.sub('[a-zA-Z\(\):]', '', line)
+                    l = line_.split()
+
+                    for l1, l2 in zip(l[::2], l[1::2]):
+                        i = int(l1)
+                        c = float(l2)
+
+                        df.loc[ i - 1,:] = c # start counting from 0
+
+        df_l = pd.concat([df_la, df_lb, df_lt], axis=1)
+        
+        return df_da, df_db, df_dt, df_l
+
 
 def read_orbcomp(output, orb_i=0, orb_f=np.inf, orb_0=0):
     '''creates pandas dataframe from orbcomp.txt, counting from 0
@@ -229,7 +224,7 @@ def read_orbcomp(output, orb_i=0, orb_f=np.inf, orb_0=0):
 
     return df
 
-def get_orb(multi, orbcomp, spin, orca2name, minerg, minsum, thresh):
+def get_locorbs(multi, orbcomp, spin, orca2name, minerg, minsum, thresh):
     '''creates dataframe with orbitals that are localized on certain atoms
 
     requires
@@ -272,6 +267,45 @@ def get_orb(multi, orbcomp, spin, orca2name, minerg, minsum, thresh):
     df = df.rename(lambda x: '{}{}'.format(x, 'a' if spin == 0 else 'b'))
 
     return df
+
+def get_lidi(lidi, orca2name, thresh):
+    '''creates dataframe with valences and bond orders / localization and delocalization indices
+    for certain atoms
+
+    requires
+    lidi        location of 'LIDI.txt' file
+    orca2name   dictionary connection orca index with user defined name
+    thresh      remove single atomic contributions lower than this (to enhance readability)'''
+
+    df_da, df_db, df_dt, df_l = read_lidi(lidi)
+
+    # delocalization indices
+    df_da = df_da.loc[orca2name.keys(),orca2name.keys()]
+    df_db = df_db.loc[orca2name.keys(),orca2name.keys()]
+    df_dt = df_dt.loc[orca2name.keys(),orca2name.keys()]
+    df_da.rename(index=orca2name, columns=orca2name, inplace=True)
+    df_db.rename(index=orca2name, columns=orca2name, inplace=True)
+    df_dt.rename(index=orca2name, columns=orca2name, inplace=True)
+    df_da = df_da.apply( lambda x: [y if y > thresh else np.nan for y in x])
+    df_db = df_db.apply( lambda x: [y if y > thresh else np.nan for y in x])
+    df_dt = df_dt.apply( lambda x: [y if y > thresh else np.nan for y in x])
+    
+    # for total: keep only upper triange
+    df_dt = df_dt.where(np.triu(np.ones(df_dt.shape)).astype(np.bool), other=np.nan)
+    # merge alpha and beta: upper tringle alhpa, lower beta
+    df_dab = df_da.where(np.triu(np.ones(df_da.shape)).astype(np.bool), other=-df_db)
+    for i in df_dab.columns:
+        df_dab.loc[i, i] = np.nan
+
+
+    # localization indices
+
+    df_l = df_l.loc[orca2name.keys(),:]
+    df_l.rename(index=orca2name, inplace=True)
+    df_l = df_l.apply( lambda x: [y if y > thresh else np.nan for y in x] )
+    
+    return df_dt, df_dab, df_l
+
 
 
 ########################
@@ -533,8 +567,8 @@ def run(orca2name):
 
     # command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('multi_out', nargs='?', help='MultiWFN output file', default='multi_hirsh.out')
-    parser.add_argument('orca_out', nargs='?', help='Orca output file', default='orca1.out')
+    parser.add_argument('multi_out', help='MultiWFN output file')
+    parser.add_argument('-o', '--orca-out', metavar='OUT', help='Orca output file', default='orca1.out')
     parser.add_argument('-e', '--orb_erg', metavar='ERG', default=-1, type=float, 
         help='Only show orbitals with energy (in Ha) higher than ERG. Default: -1')
     parser.add_argument('-s', '--orb_sum', metavar='SUM', default=.6, type=float, 
@@ -548,7 +582,6 @@ def run(orca2name):
     lidi = multi.parent / 'LIDI.txt' 
     orbcomp = multi.parent / 'orbcomp.txt'
     orca = Path(args.orca_out)
-
 
     # define thresholds
     minsum = args.orb_sum
@@ -570,7 +603,7 @@ def run(orca2name):
 
         #spin
         print('    ... getting spin populations'.format(multi.name))
-        df_spin = get_hirsh_spin(multi.name)
+        df_spin = get_fuzzy_spin(multi.name)
         df_spin = rename_columns(df_spin, orca2name) 
 
         # write output
@@ -591,13 +624,12 @@ def run(orca2name):
 
         print('    ... done!')
 
+        # orbital compositions
         if orbcomp.is_file():
             print('Now processing {} ...'.format(orbcomp.name))
-
-            # orbital compositions
             print('    ... reading {}'.format(orbcomp.name))
-            df_orba = get_orb(multi, orbcomp, spin=0, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
-            df_orbb = get_orb(multi, orbcomp, spin=1, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
+            df_orba = get_locorbs(multi, orbcomp, spin=0, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
+            df_orbb = get_locorbs(multi, orbcomp, spin=1, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
 
             # excel sheet and figure
             df_orbab = pd.concat([ # concatenate a and b 
@@ -617,9 +649,30 @@ def run(orca2name):
                 write_plaintext(df_orbab.fillna(''), orb_sheet)
 
             print('    ... done!')
-
         else:
             print('{} NOT found. Orbitals will not be analyzed'.format(orbcomp.name))
+
+        # valences bond orders / localization and delocalization indices
+        if lidi.is_file():
+            print('Now processing {} ...'.format(lidi.name))
+            print('    ... reading {}'.format(lidi.name))
+            df_dt, df_dab, df_l = get_lidi(lidi=lidi, orca2name=orca2name, thresh=thresh)
+            
+            l_sheet = Path('localization_indices.txt')
+            print('    ... writing localization indices / atomic valence:\n        {}'.format(l_sheet))
+            write_plaintext(df_l.fillna(''), l_sheet)
+
+            dab_sheet = Path('delocalization_indices_ab.txt')
+            print('    ... writing alpha and beta delocalization indices / bond orders:\n        {}'.format(dab_sheet))
+            write_plaintext(df_dab.fillna(''), dab_sheet)
+
+            dt_sheet = Path('delocalization_indices_tot.txt')
+            print('    ... writing total delocalization indices / bond orders:\n        {}'.format(dt_sheet))
+            write_plaintext(df_dt.fillna(''), dit_sheet)
+
+        else:
+            print('{} NOT found. Localization and delocalization indices will not be analyzed'.format(lidi.name))
+
 
     else: 
         print('{} NOT found. Cannot continue and will exit now'.format(multi.name))
