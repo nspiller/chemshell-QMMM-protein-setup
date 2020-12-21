@@ -136,10 +136,11 @@ def run():
             print('INFO: read coordinates (in Bohr) from {}'.format(xyz))
         
         frag_new = Path(frag.name) 
-        frag = frag.rename(frag.name + 'bak')
-        print('INFO: backed up fragment file as: {}'.format(frag))
+        frag_bak = Path(frag.name + 'bak')
+        frag.rename(frag_bak)
+        print('INFO: backed up fragment file as: {}'.format(frag_bak))
 
-        update_fragment(frag, frag_new, atom_indices, coord_list)
+        update_fragment(frag_bak, frag_new, atom_indices, coord_list)
         print('INFO: updated fragment file: {}'.format(frag_new))
 
         

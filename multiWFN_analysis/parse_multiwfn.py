@@ -668,7 +668,7 @@ def run(orca2name):
 
             dt_sheet = Path('delocalization_indices_tot.txt')
             print('    ... writing total delocalization indices / bond orders:\n        {}'.format(dt_sheet))
-            write_plaintext(df_dt.fillna(''), dit_sheet)
+            write_plaintext(df_dt.fillna(''), dt_sheet)
 
         else:
             print('{} NOT found. Localization and delocalization indices will not be analyzed'.format(lidi.name))
