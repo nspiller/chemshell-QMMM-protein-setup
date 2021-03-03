@@ -361,9 +361,9 @@ def get_occ_orbitals(multiout):
 
     with open(multiout) as f:
         for line in f:
-            l = line.split()
+            l = line.replace(':', ' ').split()
 
-            if len(l) == 8 and l[0] == 'Orbital:' and l[-2] == 'Type:':
+            if len(l) == 8 and l[0] == 'Orbital' and l[-2] == 'Type':
                     n = int(l[1]) - 1 # adjust to counting from 0
                     e = float(l[3])
                     s = l[-1]
