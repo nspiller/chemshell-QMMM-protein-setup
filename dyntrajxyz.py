@@ -63,7 +63,7 @@ def write_output(out, df, n, l):
             # faster
             df_.to_csv(f, mode='a', header=False, sep=' ', index=False, float_format='%.6f' )
 
-            print('INFO: Done writing frame {}/{}'.format(i, nf), end='\r')
+            print('INFO: Done writing frame {}/{}'.format(i+1, nf), end='\r')
         print()
 
 def run():
