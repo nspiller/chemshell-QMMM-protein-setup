@@ -40,7 +40,7 @@ def get_df(fin, n, l):
     
     
 
-def write_output(out, df, n, l):
+def write_output(out, df, n, l, frames):
     'write output file f'
 
     
@@ -49,27 +49,29 @@ def write_output(out, df, n, l):
         nf = int((l-1) / (n+1)) # number of frames 
 
         for i in range(nf):
-            # two lines: 1) number of atoms 2) comment
-            f.write('{}\n'.format(n))
-            f.write('stuff\n')  
+            if frames[0] <= i + 1 <= frames[1]: 
+                # two lines: 1) number of atoms 2) comment
+                f.write('{}\n'.format(n))
+                f.write('stuff\n')  
 
-            # one frame at a time
-            df_ = df.iloc[i*n:(i+1)*n, :]
-            
-            # better looking
-#             string = df_.to_string(header=False, index=False, formatters=[fmt_s, fmt_f, fmt_f, fmt_f])
-#             f.write(string)
+                # one frame at a time
+                df_ = df.iloc[i*n:(i+1)*n, :]
+                
+                # better looking
+    #             string = df_.to_string(header=False, index=False, formatters=[fmt_s, fmt_f, fmt_f, fmt_f])
+    #             f.write(string)
 
-            # faster
-            df_.to_csv(f, mode='a', header=False, sep=' ', index=False, float_format='%.6f' )
+                # faster
+                df_.to_csv(f, mode='a', header=False, sep=' ', index=False, float_format='%.6f' )
 
-            print('INFO: Done writing frame {}/{}'.format(i+1, nf), end='\r')
+                print('INFO: Done writing frame {}/{}'.format(i+1, nf), end='\r')
         print()
 
 def run():
     parser = argparse.ArgumentParser(description='convert chemshell trajectory into xyz trajectory')
     parser.add_argument('chm_trj', metavar='TRJ', help='Chemshell trajectory file in Bohr')
     parser.add_argument('-o', '--output', metavar='XYZ', help='Name of xyz trajectory file in Ang. Default: TRJ.xyz')
+    parser.add_argument('-f', '--frames', metavar='N', type=int, nargs=2, help='Specify initial and final frames to write')
     args = parser.parse_args()
 
     fin = args.chm_trj
@@ -83,7 +85,8 @@ def run():
     df = get_df(fin, n, l)
 
     print('INFO: Writing to {}'.format(fout))
-    write_output(fout, df, n, l)
+    frames = args.frames
+    write_output(fout, df, n, l, frames)
     print('INFO: ... done!')
 
 if __name__ == '__main__':
