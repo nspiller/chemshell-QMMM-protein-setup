@@ -535,7 +535,7 @@ def plt_charge_spin(df_charge, df_spin):
 
     return fig
 
-def plt_orb(df):
+def plt_orb(df, cmap='coolwarm'):
     '''create plot for orbital composition
     takes dataframe with orbital compositions and creates a plot at path
 
@@ -544,13 +544,17 @@ def plt_orb(df):
     path        path to save figure
 
     returns nothing'''
-
-    y, x = len(df.index), len(df.columns) # autogenerate figure size
-    fig, ax = plt.subplots(figsize=(x*.7, y*.3)) # create figure and axis
+    
+    a = [ i for i in df.index if i.endswith('a') ]
+    b = [ i for i in df.index if i.endswith('b') ]
+    df.loc[b, :] = -df.loc[b, :] # make beta negative
+    
+    y, x = .225 * len(df.index), .55 * len(df.columns) # autogenerate figure size
+    fig, ax = plt.subplots(figsize=(x, y)) # create figure and axis
 
     sns.heatmap( # plot seaborn heatmap
-        df, 
-        cmap='twilight', vmin=0, vmax=1, 
+        data=df, ax=ax,
+        cmap=cmap, vmin=-1, vmax=1, cbar=False,
         xticklabels=True, yticklabels=True, linewidth=0.5,
         annot=True, fmt='.2f', annot_kws={ 'fontfamily': 'monospace'},)
 
@@ -632,10 +636,12 @@ def run(orca2name):
             df_orbb = get_locorbs(multi, orbcomp, spin=1, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
 
             # excel sheet and figure
-            df_orbab = pd.concat([ # concatenate a and b 
-                df_orba, 
-                pd.DataFrame(data=np.nan, index=[''], columns=df_orba.columns), 
-                df_orbb ]) 
+            df_orbab = pd.concat([ df_orba, df_orbb ]) # concatenate a and b 
+
+            # sort values into blocks with > 0.5
+            sort_mask = df_orbab.where(np.abs(df_orbab) > 0.5).sort_values(by=list( df_orbab.columns ), ascending=False) # sort mask
+            df_orbab = df_orbab.loc[ sort_mask.index, : ] # order of row for sorting
+
             if rich_output:
                 orb_sheet = Path('orbital_composition.xlsx')
                 orb_fig = Path('orbital_composition.png')
