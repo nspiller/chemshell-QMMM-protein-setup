@@ -545,9 +545,6 @@ def plt_orb(df, cmap='coolwarm'):
 
     returns nothing'''
     
-    a = [ i for i in df.index if i.endswith('a') ]
-    b = [ i for i in df.index if i.endswith('b') ]
-    df.loc[b, :] = -df.loc[b, :] # make beta negative
     
     y, x = .225 * len(df.index), .55 * len(df.columns) # autogenerate figure size
     fig, ax = plt.subplots(figsize=(x, y)) # create figure and axis
@@ -636,12 +633,11 @@ def run(orca2name):
             df_orbb = get_locorbs(multi, orbcomp, spin=1, orca2name=orca2name, minerg=minerg, minsum=minsum, thresh=thresh)
 
             # excel sheet and figure
-            df_orbab = pd.concat([ df_orba, df_orbb ]) # concatenate a and b 
+            df_orbab = pd.concat([ df_orba, -df_orbb ]) # concatenate a and b, make beta negative
 
             # sort values into blocks with > 0.5
-            sort_mask = df_orbab.where(np.abs(df_orbab) > 0.5).sort_values(by=list( df_orbab.columns ), ascending=False) # sort mask
-            df_orbab = df_orbab.loc[ sort_mask.index, : ] # order of row for sorting
-
+            sort_index = df_orbab.where(np.abs(df_orbab) > .5).sort_values(by=list(df_orbab.columns), ascending=False).index
+            df_orbab = df_orbab.loc[sort_index, :]
             if rich_output:
                 orb_sheet = Path('orbital_composition.xlsx')
                 orb_fig = Path('orbital_composition.png')
