@@ -573,8 +573,8 @@ def run(orca2name):
     parser = argparse.ArgumentParser()
     parser.add_argument('multi_out', help='MultiWFN output file')
     parser.add_argument('-o', '--orca-out', metavar='OUT', help='Orca output file', default='orca1.out')
-    parser.add_argument('-e', '--orb_erg', metavar='ERG', default=-1, type=float, 
-        help='Only show orbitals with energy (in Ha) higher than ERG. Default: -1')
+    parser.add_argument('-e', '--orb_erg', metavar='ERG', default=-10000, type=float, 
+        help='Only show orbitals with energy (in Ha) higher than ERG. Default: -10000')
     parser.add_argument('-s', '--orb_sum', metavar='SUM', default=.6, type=float, 
         help='Only show orbitals that have a summed contribution (for atoms defined in orca2name) higher than SUM. Default: 0.6')
     parser.add_argument('-t', '--orb_thresh', metavar='THRESH', default=.02, type=float, 
