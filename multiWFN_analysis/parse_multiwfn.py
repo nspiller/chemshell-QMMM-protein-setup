@@ -26,15 +26,15 @@ import argparse
 import sys
 
 try:
-    import seaborn as sns
-    import matplotlib.pylab as plt
+    from seaborn import heatmap
+    from matplotlib import rcParams
+    from matplotlib.pylab import subplots
+    rcParams['figure.dpi'] = 200
     rich_output = True
 except ModuleNotFoundError:
     rich_output = False
     print('NOTICE: Seaborn/matplotlib not found: only creating plain text files')
 
-from matplotlib import rcParams
-rcParams['figure.dpi'] = 200
 
 #################
 ## Fuzzy atoms ##
@@ -509,7 +509,7 @@ def plt_charge_spin(df_charge, df_spin):
     returns nothing'''
 
     x = len(df_charge.columns) 
-    fig, axarr = plt.subplots(nrows=2, figsize=(3*x, 8) )
+    fig, axarr = subplots(nrows=2, figsize=(3*x, 8) )
 
     kw_args = { # settings for both subplots
         'linewidth': 0.5,
@@ -521,12 +521,12 @@ def plt_charge_spin(df_charge, df_spin):
     # plot charge to first axis
     ax = axarr[0]
     ax.set_title('Charge')
-    sns.heatmap( df_charge.iloc[0:1,:], ax=ax, cmap='viridis_r', **kw_args )
+    heatmap( df_charge.iloc[0:1,:], ax=ax, cmap='viridis_r', **kw_args )
 
     # plot spin to second axis
     ax = axarr[1]
     ax.set_title('Spin')
-    sns.heatmap( df_spin, ax=ax, cmap='seismic_r', **kw_args )
+    heatmap( df_spin, ax=ax, cmap='seismic_r', **kw_args )
 
     for ax in axarr:
         ax.tick_params(axis='both', labelrotation=0)
@@ -547,9 +547,9 @@ def plt_orb(df, cmap='coolwarm'):
     
     
     y, x = .225 * len(df.index), .55 * len(df.columns) # autogenerate figure size
-    fig, ax = plt.subplots(figsize=(x, y)) # create figure and axis
+    fig, ax = subplots(figsize=(x, y)) # create figure and axis
 
-    sns.heatmap( # plot seaborn heatmap
+    heatmap( # plot seaborn heatmap
         data=df, ax=ax,
         cmap=cmap, vmin=-1, vmax=1, cbar=False,
         xticklabels=True, yticklabels=True, linewidth=0.5,
